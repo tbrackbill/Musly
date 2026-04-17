@@ -41,6 +41,7 @@ class DownloadState {
     int? totalCount,
     int? downloadedCount,
     Song? currentSong,
+    bool clearCurrentSong = false,
     List<Song>? failedSongs,
   }) {
     return DownloadState(
@@ -48,7 +49,7 @@ class DownloadState {
       currentProgress: currentProgress ?? this.currentProgress,
       totalCount: totalCount ?? this.totalCount,
       downloadedCount: downloadedCount ?? this.downloadedCount,
-      currentSong: currentSong ?? this.currentSong,
+      currentSong: clearCurrentSong ? null : (currentSong ?? this.currentSong),
       failedSongs: failedSongs ?? this.failedSongs,
     );
   }
@@ -211,6 +212,10 @@ class OfflineService {
         },
       );
 
+      // Only persist if the file passes the 64 KB validity check
+      if (!isSongDownloaded(song.id)) {
+        throw Exception('Downloaded file for ${song.id} failed size check — may be an error response');
+      }
       final downloadedIds = getDownloadedSongIds();
       if (!downloadedIds.contains(song.id)) {
         downloadedIds.add(song.id);
@@ -356,7 +361,7 @@ class OfflineService {
       _isBackgroundDownloadActive = false;
       downloadState.value = downloadState.value.copyWith(
         isDownloading: false,
-        currentSong: null,
+        clearCurrentSong: true,
       );
     }
   }
@@ -373,7 +378,7 @@ class OfflineService {
     _isBackgroundDownloadActive = false;
     downloadState.value = downloadState.value.copyWith(
       isDownloading: false,
-      currentSong: null,
+      clearCurrentSong: true,
     );
   }
 
