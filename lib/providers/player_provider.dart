@@ -51,6 +51,7 @@ class PlayerProvider extends ChangeNotifier {
   bool _isPlaying = false;
   bool _isLoading = false;
   bool _shuffleEnabled = false;
+  final List<int> _shuffleHistory = [];
   RepeatMode _repeatMode = RepeatMode.off;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
@@ -975,6 +976,12 @@ class PlayerProvider extends ChangeNotifier {
 
     try {
       if (playlist != null) {
+        // Only reset shuffle history when switching to a genuinely new queue.
+        // skipToIndex passes _queue itself, so identical() is true for
+        // in-queue navigation and we preserve the back-button history.
+        if (!identical(playlist, _queue)) {
+          _shuffleHistory.clear();
+        }
         _queue = List.from(playlist);
         _currentIndex =
             startIndex ?? playlist.indexWhere((s) => s.id == song.id);
@@ -982,6 +989,7 @@ class PlayerProvider extends ChangeNotifier {
       } else if (_queue.isEmpty || !_queue.any((s) => s.id == song.id)) {
         _queue = [song];
         _currentIndex = 0;
+        _shuffleHistory.clear();
       } else {
         _currentIndex = _queue.indexWhere((s) => s.id == song.id);
       }
@@ -1301,6 +1309,7 @@ class PlayerProvider extends ChangeNotifier {
     }
 
     if (_shuffleEnabled && _queue.length > 1) {
+      _shuffleHistory.add(_currentIndex);
       int next;
       do {
         next = Random().nextInt(_queue.length);
@@ -1336,16 +1345,13 @@ class PlayerProvider extends ChangeNotifier {
   Future<void> skipPrevious() async {
     if (_position.inSeconds > 3) {
       await seek(Duration.zero);
-    } else if (_currentIndex > 0) {
+    } else if (_shuffleEnabled && _shuffleHistory.isNotEmpty) {
+      final prev = _shuffleHistory.removeLast();
+      await skipToIndex(prev);
+    } else if (!_shuffleEnabled && _currentIndex > 0) {
       await skipToIndex(_currentIndex - 1);
     } else if (_repeatMode == RepeatMode.all && _queue.isNotEmpty) {
       await skipToIndex(_queue.length - 1);
-    } else if (_shuffleEnabled && _queue.length > 1) {
-      int prev;
-      do {
-        prev = Random().nextInt(_queue.length);
-      } while (prev == _currentIndex);
-      await skipToIndex(prev);
     } else {
       await seek(Duration.zero);
     }
@@ -1366,6 +1372,7 @@ class PlayerProvider extends ChangeNotifier {
       _queue.insert(0, currentSong);
       _currentIndex = 0;
     }
+    _shuffleHistory.clear();
     _storageService.saveShuffleMode(_shuffleEnabled);
     notifyListeners();
   }
