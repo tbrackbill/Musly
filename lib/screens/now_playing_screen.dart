@@ -2597,6 +2597,7 @@ class _VolumeSliderState extends State<_VolumeSlider> {
   double _dragValue = 0.0;
   double _systemVolume = 0.5;
   StreamSubscription<double>? _volumeSubscription;
+  Timer? _volumeDebounce;
 
   // Serialise remote volume commits: store the latest desired value and run
   // one async write loop at a time so out-of-order responses can't snap the
@@ -2616,18 +2617,24 @@ class _VolumeSliderState extends State<_VolumeSlider> {
     _systemVolume = await VolumeController.instance.getVolume();
     if (mounted) setState(() {});
 
+    // Debounce rapid physical-button presses: the OS can queue up several
+    // volume-changed callbacks in quick succession, making the slider overshoot
+    // the intended level.  Wait 80 ms after the last event before committing.
     _volumeSubscription = VolumeController.instance.addListener((volume) {
-      if (mounted && !_isDragging) {
-        setState(() {
-          _systemVolume = volume;
-        });
-      }
+      if (!mounted || _isDragging) return;
+      _volumeDebounce?.cancel();
+      _volumeDebounce = Timer(const Duration(milliseconds: 80), () {
+        if (mounted && !_isDragging) {
+          setState(() => _systemVolume = volume);
+        }
+      });
     });
   }
 
   @override
   void dispose() {
     _volumeSubscription?.cancel();
+    _volumeDebounce?.cancel();
     super.dispose();
   }
 
