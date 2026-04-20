@@ -1483,11 +1483,39 @@ class PlayerProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Coalesce rapid UPnP hardware-button presses: store the latest desired
+  // value and run one SOAP write loop at a time so the renderer isn't
+  // flooded with concurrent SetVolume requests that arrive out-of-order.
+  int? _pendingUpnpVolume;
+  bool _upnpVolumeWriteInProgress = false;
+
   void _onRemoteVolumeChange(int volume) {
     if (_castService.isConnected) {
       _castService.setVolume(volume / 100.0);
     } else if (_upnpService.isConnected) {
-      _upnpService.setVolume(volume);
+      // Optimistic update: reflect the new level in the UI immediately without
+      // waiting for the SOAP round-trip (slow renderers can take 1-2 s).
+      _volume = (volume / 100.0).clamp(0.0, 1.0);
+      // Keep the MediaSession VolumeProviderCompat cache current so the next
+      // button press calculates from the right base and doesn't snap back.
+      _androidSystemService.updateRemoteVolume(volume);
+      notifyListeners();
+      _pendingUpnpVolume = volume;
+      _drainUpnpVolume();
+    }
+  }
+
+  Future<void> _drainUpnpVolume() async {
+    if (_upnpVolumeWriteInProgress) return;
+    _upnpVolumeWriteInProgress = true;
+    try {
+      while (_pendingUpnpVolume != null) {
+        final vol = _pendingUpnpVolume!;
+        _pendingUpnpVolume = null;
+        await _upnpService.setVolume(vol);
+      }
+    } finally {
+      _upnpVolumeWriteInProgress = false;
     }
   }
 
