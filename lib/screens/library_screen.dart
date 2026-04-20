@@ -254,46 +254,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
       );
     }
 
-    if (_selectedFilter == 'All') {
-      final albums = provider.isLocalOnlyMode
-          ? provider.cachedAllAlbums.take(20).toList()
-          : provider.recentAlbums.take(20).toList();
-      items.addAll(
-        albums.map(
-          (a) => _LibraryItem(
-            type: 'Album',
-            id: a.id,
-            name: a.name,
-            subtitle: a.artistParticipants != null &&
-                    a.artistParticipants!.isNotEmpty
-                ? a.artistParticipants!.map((r) => r.name).join(', ')
-                : (a.artist ?? ''),
-            coverArt: a.coverArt,
-          ),
-        ),
-      );
-    }
-
-    if (_selectedFilter == 'Faves') {
-      final recent = provider.isLocalOnlyMode
-          ? provider.cachedAllAlbums.take(10).toList()
-          : provider.recentAlbums.take(10).toList();
-      items.addAll(
-        recent.map(
-          (a) => _LibraryItem(
-            type: 'Album',
-            id: a.id,
-            name: a.name,
-            subtitle: a.artistParticipants != null &&
-                    a.artistParticipants!.isNotEmpty
-                ? a.artistParticipants!.map((r) => r.name).join(', ')
-                : (a.artist ?? ''),
-            coverArt: a.coverArt,
-          ),
-        ),
-      );
-    }
-
     if (_selectedFilter == 'Albums') {
       final albums = provider.isLocalOnlyMode
           ? provider.cachedAllAlbums
