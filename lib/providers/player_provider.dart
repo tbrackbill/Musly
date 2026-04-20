@@ -1793,17 +1793,19 @@ class PlayerProvider extends ChangeNotifier {
       changed = true;
     }
 
+    // While we are actively writing volume to the renderer, suppress incoming
+    // volume feedback. Each completed SetVolume SOAP call updates
+    // _upnpService._volume and fires notifyListeners(), which triggers this
+    // handler and would overwrite our optimistic _volume with a stale
+    // in-flight response — the 1-2 s snap-back after rapid button presses.
+    // Once the drain queue empties and the write lock releases, normal
+    // poll-based sync resumes so external renderer changes are still picked up.
     final vol = _upnpService.volume;
-    if (vol >= 0) {
+    if (vol >= 0 && !_upnpVolumeWriteInProgress && _pendingUpnpVolume == null) {
       final normalized = vol / 100.0;
       if ((_volume - normalized).abs() > 0.005) {
         _volume = normalized;
         changed = true;
-        // Only push the new volume to the Android MediaSession when it has
-        // actually changed.  Calling updateRemoteVolume unconditionally on
-        // every state tick would overwrite any in-flight physical volume
-        // adjustment with the stale cached value before the next poll cycle
-        // had a chance to read it back, causing the audible snap-back.
         _androidSystemService.updateRemoteVolume(vol);
       }
     }
