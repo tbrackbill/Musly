@@ -24,7 +24,7 @@ class SettingsAboutTab extends StatelessWidget {
               icon: CupertinoIcons.info,
               iconColor: Theme.of(context).colorScheme.primary,
               title: AppLocalizations.of(context)!.aboutVersion,
-              subtitle: '1.2.0',
+              subtitle: '1.2.1',
             ),
             _buildDivider(context),
             _buildInfoTile(
@@ -58,7 +58,7 @@ class SettingsAboutTab extends StatelessWidget {
               context,
               icon: CupertinoIcons.doc_text,
               title: AppLocalizations.of(context)!.aboutLinkChangelog,
-              url: 'https://github.com/tbrackbill/Musly/releases/tag/v1.2.0-tbrackbill',
+              url: 'https://github.com/tbrackbill/Musly/releases/tag/v1.2.1-tbrackbill',
             ),
             _buildDivider(context),
             _buildLinkTile(
