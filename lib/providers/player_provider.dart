@@ -51,7 +51,6 @@ class PlayerProvider extends ChangeNotifier {
   bool _isPlaying = false;
   bool _isLoading = false;
   bool _shuffleEnabled = false;
-  final List<int> _shuffleHistory = [];
   RepeatMode _repeatMode = RepeatMode.off;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
@@ -820,12 +819,6 @@ class PlayerProvider extends ChangeNotifier {
       notifyListeners();
     });
 
-    // Resume any playlists that were queued for download but interrupted
-    _offlineService.initialize().then((_) {
-      _offlineService.resumeIncompleteDownloads(_subsonicService);
-    });
-
-
     _storageService.getRepeatMode().then((saved) {
       _repeatMode = RepeatMode.values[saved.clamp(0, RepeatMode.values.length - 1)];
       notifyListeners();
@@ -982,12 +975,6 @@ class PlayerProvider extends ChangeNotifier {
 
     try {
       if (playlist != null) {
-        // Only reset shuffle history when switching to a genuinely new queue.
-        // skipToIndex passes _queue itself, so identical() is true for
-        // in-queue navigation and we preserve the back-button history.
-        if (!identical(playlist, _queue)) {
-          _shuffleHistory.clear();
-        }
         _queue = List.from(playlist);
         _currentIndex =
             startIndex ?? playlist.indexWhere((s) => s.id == song.id);
@@ -995,7 +982,6 @@ class PlayerProvider extends ChangeNotifier {
       } else if (_queue.isEmpty || !_queue.any((s) => s.id == song.id)) {
         _queue = [song];
         _currentIndex = 0;
-        _shuffleHistory.clear();
       } else {
         _currentIndex = _queue.indexWhere((s) => s.id == song.id);
       }
@@ -1315,7 +1301,6 @@ class PlayerProvider extends ChangeNotifier {
     }
 
     if (_shuffleEnabled && _queue.length > 1) {
-      _shuffleHistory.add(_currentIndex);
       int next;
       do {
         next = Random().nextInt(_queue.length);
@@ -1351,13 +1336,16 @@ class PlayerProvider extends ChangeNotifier {
   Future<void> skipPrevious() async {
     if (_position.inSeconds > 3) {
       await seek(Duration.zero);
-    } else if (_shuffleEnabled && _shuffleHistory.isNotEmpty) {
-      final prev = _shuffleHistory.removeLast();
-      await skipToIndex(prev);
-    } else if (!_shuffleEnabled && _currentIndex > 0) {
+    } else if (_currentIndex > 0) {
       await skipToIndex(_currentIndex - 1);
     } else if (_repeatMode == RepeatMode.all && _queue.isNotEmpty) {
       await skipToIndex(_queue.length - 1);
+    } else if (_shuffleEnabled && _queue.length > 1) {
+      int prev;
+      do {
+        prev = Random().nextInt(_queue.length);
+      } while (prev == _currentIndex);
+      await skipToIndex(prev);
     } else {
       await seek(Duration.zero);
     }
@@ -1378,7 +1366,6 @@ class PlayerProvider extends ChangeNotifier {
       _queue.insert(0, currentSong);
       _currentIndex = 0;
     }
-    _shuffleHistory.clear();
     _storageService.saveShuffleMode(_shuffleEnabled);
     notifyListeners();
   }
@@ -1483,39 +1470,11 @@ class PlayerProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Coalesce rapid UPnP hardware-button presses: store the latest desired
-  // value and run one SOAP write loop at a time so the renderer isn't
-  // flooded with concurrent SetVolume requests that arrive out-of-order.
-  int? _pendingUpnpVolume;
-  bool _upnpVolumeWriteInProgress = false;
-
   void _onRemoteVolumeChange(int volume) {
     if (_castService.isConnected) {
       _castService.setVolume(volume / 100.0);
     } else if (_upnpService.isConnected) {
-      // Optimistic update: reflect the new level in the UI immediately without
-      // waiting for the SOAP round-trip (slow renderers can take 1-2 s).
-      _volume = (volume / 100.0).clamp(0.0, 1.0);
-      // Keep the MediaSession VolumeProviderCompat cache current so the next
-      // button press calculates from the right base and doesn't snap back.
-      _androidSystemService.updateRemoteVolume(volume);
-      notifyListeners();
-      _pendingUpnpVolume = volume;
-      _drainUpnpVolume();
-    }
-  }
-
-  Future<void> _drainUpnpVolume() async {
-    if (_upnpVolumeWriteInProgress) return;
-    _upnpVolumeWriteInProgress = true;
-    try {
-      while (_pendingUpnpVolume != null) {
-        final vol = _pendingUpnpVolume!;
-        _pendingUpnpVolume = null;
-        await _upnpService.setVolume(vol);
-      }
-    } finally {
-      _upnpVolumeWriteInProgress = false;
+      _upnpService.setVolume(volume);
     }
   }
 
@@ -1793,19 +1752,17 @@ class PlayerProvider extends ChangeNotifier {
       changed = true;
     }
 
-    // While we are actively writing volume to the renderer, suppress incoming
-    // volume feedback. Each completed SetVolume SOAP call updates
-    // _upnpService._volume and fires notifyListeners(), which triggers this
-    // handler and would overwrite our optimistic _volume with a stale
-    // in-flight response — the 1-2 s snap-back after rapid button presses.
-    // Once the drain queue empties and the write lock releases, normal
-    // poll-based sync resumes so external renderer changes are still picked up.
     final vol = _upnpService.volume;
-    if (vol >= 0 && !_upnpVolumeWriteInProgress && _pendingUpnpVolume == null) {
+    if (vol >= 0) {
       final normalized = vol / 100.0;
       if ((_volume - normalized).abs() > 0.005) {
         _volume = normalized;
         changed = true;
+        // Only push the new volume to the Android MediaSession when it has
+        // actually changed.  Calling updateRemoteVolume unconditionally on
+        // every state tick would overwrite any in-flight physical volume
+        // adjustment with the stale cached value before the next poll cycle
+        // had a chance to read it back, causing the audible snap-back.
         _androidSystemService.updateRemoteVolume(vol);
       }
     }
