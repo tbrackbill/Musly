@@ -652,6 +652,7 @@ class UpnpService extends ChangeNotifier {
         '  </s:Body>\n'
         '</s:Envelope>';
 
+    debugPrint('UPnP RC SOAP → $action');
     final response = await _dio.post<String>(
       device!.renderingControlUrl!,
       data: envelope,
@@ -667,6 +668,7 @@ class UpnpService extends ChangeNotifier {
 
     final status = response.statusCode ?? 0;
     final responseBody = response.data ?? '';
+    debugPrint('UPnP RC SOAP ← $action HTTP $status');
     if (status < 200 || status >= 300) {
       throw Exception('UPnP RenderingControl $action failed — HTTP $status');
     }

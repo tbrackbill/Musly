@@ -1476,27 +1476,33 @@ class PlayerProvider extends ChangeNotifier {
     if (_castService.isConnected) {
       _castService.setVolume(volume / 100.0);
     } else if (_upnpService.isConnected) {
+      if (_upnpVolumeWriteInProgress) return;
+      debugPrint('VOL _onRemoteVolumeChange: volume=$volume upnpConnected=true');
       _applyUpnpVolume(volume);
+    } else {
+      debugPrint('VOL _onRemoteVolumeChange: volume=$volume but upnpConnected=false — skipping');
     }
   }
 
-  // SetVolume then immediately GetVolume so we update the overlay with the
-  // actual value the renderer committed (renderers may quantize our value).
-  // The write-in-progress flag suppresses the poll-based state handler from
-  // calling updateRemoteVolume mid-sequence and causing a second overlay jump.
   Future<void> _applyUpnpVolume(int volume) async {
+    debugPrint('VOL _applyUpnpVolume START: requested=$volume');
     _upnpVolumeWriteInProgress = true;
     _volume = (volume / 100.0).clamp(0.0, 1.0);
     notifyListeners();
     try {
       await _upnpService.setVolume(volume);
+      debugPrint('VOL _applyUpnpVolume: setVolume done, calling getVolume');
       final actual = await _upnpService.getVolume();
+      debugPrint('VOL _applyUpnpVolume: actual=$actual → calling updateRemoteVolume');
       if (actual >= 0) {
         _volume = actual / 100.0;
         _androidSystemService.updateRemoteVolume(actual);
         notifyListeners();
       }
+    } catch (e) {
+      debugPrint('VOL _applyUpnpVolume ERROR: $e');
     } finally {
+      debugPrint('VOL _applyUpnpVolume END');
       _upnpVolumeWriteInProgress = false;
     }
   }
