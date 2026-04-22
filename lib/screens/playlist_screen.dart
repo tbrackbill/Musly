@@ -277,33 +277,22 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
     final songs = _playlist?.songs;
     if (songs == null || songs.isEmpty) return;
 
-    final subsonicService = Provider.of<SubsonicService>(
-      context,
-      listen: false,
-    );
     final offlineService = OfflineService();
+    final subsonicService = Provider.of<SubsonicService>(context, listen: false);
     await offlineService.initialize();
 
     setState(() => _isDownloading = true);
 
-    offlineService.startBackgroundDownload(songs, subsonicService).then((_) {
-      if (mounted) {
-        setState(() => _isDownloading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Downloaded ${songs.length} songs from ${_playlist!.name}',
-            ),
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
+    offlineService
+        .queuePlaylistDownload(widget.playlistId, songs, subsonicService)
+        .whenComplete(() {
+      if (mounted) setState(() => _isDownloading = false);
     });
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Downloading ${songs.length} songs in background…'),
+          content: Text('Queued ${songs.length} songs from ${_playlist!.name} for download…'),
           duration: const Duration(seconds: 2),
         ),
       );
@@ -428,24 +417,52 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
             padding: const EdgeInsets.all(16),
             child: Column(
               children: [
-                Container(
-                  width: 150,
-                  height: 150,
-                  decoration: BoxDecoration(
-                    color: AppTheme.appleMusicRed.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: _playlist!.coverArt != null
-                      ? AlbumArtwork(
-                          coverArt: _playlist!.coverArt,
-                          size: 150,
-                          borderRadius: 12,
-                        )
-                      : const Icon(
-                          CupertinoIcons.music_note_list,
-                          color: AppTheme.appleMusicRed,
-                          size: 64,
+                ValueListenableBuilder<Set<String>>(
+                  valueListenable: OfflineService().downloadedSongIds,
+                  builder: (context, ids, _) {
+                    final songs = _playlist!.songs ?? [];
+                    final allDownloaded = songs.isNotEmpty &&
+                        songs.every((s) => ids.contains(s.id));
+                    return Stack(
+                      children: [
+                        Container(
+                          width: 150,
+                          height: 150,
+                          decoration: BoxDecoration(
+                            color: AppTheme.appleMusicRed.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: _playlist!.coverArt != null
+                              ? AlbumArtwork(
+                                  coverArt: _playlist!.coverArt,
+                                  size: 150,
+                                  borderRadius: 12,
+                                )
+                              : const Icon(
+                                  CupertinoIcons.music_note_list,
+                                  color: AppTheme.appleMusicRed,
+                                  size: 64,
+                                ),
                         ),
+                        if (allDownloaded)
+                          Positioned(
+                            bottom: 6,
+                            right: 6,
+                            child: Container(
+                              decoration: const BoxDecoration(
+                                color: Colors.white,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.check_circle,
+                                color: Colors.green,
+                                size: 24,
+                              ),
+                            ),
+                          ),
+                      ],
+                    );
+                  },
                 ),
                 const SizedBox(height: 16),
                 Text(
