@@ -1470,11 +1470,34 @@ class PlayerProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool _upnpVolumeWriteInProgress = false;
+
   void _onRemoteVolumeChange(int volume) {
     if (_castService.isConnected) {
       _castService.setVolume(volume / 100.0);
     } else if (_upnpService.isConnected) {
-      _upnpService.setVolume(volume);
+      _applyUpnpVolume(volume);
+    }
+  }
+
+  // SetVolume then immediately GetVolume so we update the overlay with the
+  // actual value the renderer committed (renderers may quantize our value).
+  // The write-in-progress flag suppresses the poll-based state handler from
+  // calling updateRemoteVolume mid-sequence and causing a second overlay jump.
+  Future<void> _applyUpnpVolume(int volume) async {
+    _upnpVolumeWriteInProgress = true;
+    _volume = (volume / 100.0).clamp(0.0, 1.0);
+    notifyListeners();
+    try {
+      await _upnpService.setVolume(volume);
+      final actual = await _upnpService.getVolume();
+      if (actual >= 0) {
+        _volume = actual / 100.0;
+        _androidSystemService.updateRemoteVolume(actual);
+        notifyListeners();
+      }
+    } finally {
+      _upnpVolumeWriteInProgress = false;
     }
   }
 
@@ -1753,16 +1776,11 @@ class PlayerProvider extends ChangeNotifier {
     }
 
     final vol = _upnpService.volume;
-    if (vol >= 0) {
+    if (vol >= 0 && !_upnpVolumeWriteInProgress) {
       final normalized = vol / 100.0;
       if ((_volume - normalized).abs() > 0.005) {
         _volume = normalized;
         changed = true;
-        // Only push the new volume to the Android MediaSession when it has
-        // actually changed.  Calling updateRemoteVolume unconditionally on
-        // every state tick would overwrite any in-flight physical volume
-        // adjustment with the stale cached value before the next poll cycle
-        // had a chance to read it back, causing the audible snap-back.
         _androidSystemService.updateRemoteVolume(vol);
       }
     }

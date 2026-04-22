@@ -60,6 +60,7 @@ class MusicService : MediaBrowserServiceCompat() {
     private var currentPosition: Long = 0
     private var isPlaying: Boolean = false
     private var volumeProvider: VolumeProviderCompat? = null
+    private var upnpExpectedVolume = 0
 
     private val mediaItems = mutableListOf<MediaBrowserCompat.MediaItem>()
     private val recentSongs = mutableListOf<MediaBrowserCompat.MediaItem>()
@@ -688,24 +689,24 @@ class MusicService : MediaBrowserServiceCompat() {
 
     fun setRemoteVolume(isRemote: Boolean, currentVolume: Int) {
         if (isRemote) {
+            upnpExpectedVolume = currentVolume
             volumeProvider = object : VolumeProviderCompat(
                 VOLUME_CONTROL_ABSOLUTE, 100, currentVolume
             ) {
                 override fun onSetVolumeTo(volume: Int) {
+                    upnpExpectedVolume = volume
                     setCurrentVolume(volume)
                     AndroidAutoPlugin.sendCommand("setVolume", mapOf("volume" to volume))
                 }
 
                 override fun onAdjustVolume(direction: Int) {
-                    // Use getCurrentVolume() (the live VolumeProviderCompat
-                    // property) not the captured constructor param.  The param
-                    // is a val fixed at connection time, so every relative
-                    // adjustment would always compute from the same baseline,
-                    // causing the volume to snap back to initialVolume±5 no
-                    // matter how many times the user presses the button.
-                    val newVolume = (getCurrentVolume() + direction * 5).coerceIn(0, 100)
-                    setCurrentVolume(newVolume)
-                    AndroidAutoPlugin.sendCommand("setVolume", mapOf("volume" to newVolume))
+                    // Track expected volume here so successive presses accumulate
+                    // correctly. We do NOT call setCurrentVolume — the Dart side
+                    // calls updateRemoteVolume once it has the actual committed
+                    // value from the renderer, giving a single overlay update
+                    // instead of two (one speculative, one corrective).
+                    upnpExpectedVolume = (upnpExpectedVolume + direction * 5).coerceIn(0, 100)
+                    AndroidAutoPlugin.sendCommand("setVolume", mapOf("volume" to upnpExpectedVolume))
                 }
             }
             mediaSession.setPlaybackToRemote(volumeProvider!!)
@@ -718,6 +719,7 @@ class MusicService : MediaBrowserServiceCompat() {
     }
 
     fun updateRemoteVolume(volume: Int) {
+        upnpExpectedVolume = volume
         volumeProvider?.currentVolume = volume
     }
 
