@@ -85,33 +85,22 @@ class _AlbumScreenState extends State<AlbumScreen> {
   Future<void> _downloadAlbum() async {
     if (_songs.isEmpty) return;
 
-    final subsonicService = Provider.of<SubsonicService>(
-      context,
-      listen: false,
-    );
     final offlineService = OfflineService();
+    final subsonicService = Provider.of<SubsonicService>(context, listen: false);
     await offlineService.initialize();
 
     setState(() => _isDownloading = true);
 
-    offlineService.startBackgroundDownload(_songs, subsonicService).then((_) {
-      if (mounted) {
-        setState(() => _isDownloading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Downloaded ${_songs.length} songs from ${_album!.name}',
-            ),
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
+    offlineService
+        .queuePlaylistDownload(_album!.id, _songs, subsonicService)
+        .whenComplete(() {
+      if (mounted) setState(() => _isDownloading = false);
     });
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Downloading ${_songs.length} songs in background…'),
+          content: Text('Queued ${_songs.length} songs from ${_album!.name} for download…'),
           duration: const Duration(seconds: 2),
         ),
       );
@@ -226,24 +215,47 @@ class _AlbumScreenState extends State<AlbumScreen> {
                   onPressed: () => Navigator.pop(context),
                 ),
                 flexibleSpace: FlexibleSpaceBar(
-                  background: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      Padding(
-                        padding: EdgeInsets.only(
-                          top: MediaQuery.of(context).padding.top + 60,
-                          left: 40,
-                          right: 40,
-                          bottom: 80,
-                        ),
-                        child: AlbumArtwork(
-                          coverArt: _album!.coverArt,
-                          size: 280,
-                          borderRadius: 10,
-                          preserveAspectRatio: true,
-                        ),
-                      ),
-                    ],
+                  background: ValueListenableBuilder<Set<String>>(
+                    valueListenable: OfflineService().downloadedSongIds,
+                    builder: (context, ids, _) {
+                      final allDownloaded = _songs.isNotEmpty &&
+                          _songs.every((s) => ids.contains(s.id));
+                      return Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          Padding(
+                            padding: EdgeInsets.only(
+                              top: MediaQuery.of(context).padding.top + 60,
+                              left: 40,
+                              right: 40,
+                              bottom: 80,
+                            ),
+                            child: AlbumArtwork(
+                              coverArt: _album!.coverArt,
+                              size: 280,
+                              borderRadius: 10,
+                              preserveAspectRatio: true,
+                            ),
+                          ),
+                          if (allDownloaded)
+                            Positioned(
+                              bottom: 86,
+                              right: 46,
+                              child: Container(
+                                decoration: const BoxDecoration(
+                                  color: Colors.white,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.check_circle,
+                                  color: Colors.green,
+                                  size: 28,
+                                ),
+                              ),
+                            ),
+                        ],
+                      );
+                    },
                   ),
                 ),
                 actions: [
