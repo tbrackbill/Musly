@@ -700,12 +700,14 @@ class MusicService : MediaBrowserServiceCompat() {
                 }
 
                 override fun onAdjustVolume(direction: Int) {
-                    // Track expected volume here so successive presses accumulate
-                    // correctly. We do NOT call setCurrentVolume — the Dart side
-                    // calls updateRemoteVolume once it has the actual committed
-                    // value from the renderer, giving a single overlay update
-                    // instead of two (one speculative, one corrective).
+                    // Call setCurrentVolume immediately so mCurrentVolume is set
+                    // to our intended value before the framework's 1000ms
+                    // mClearOptimisticVolumeRunnable fires. Without this, the
+                    // overlay shows the framework's naive mOptimisticVolume (+1
+                    // on Android's internal scale) for a full second before
+                    // snapping to the actual renderer-committed value.
                     upnpExpectedVolume = (upnpExpectedVolume + direction * 5).coerceIn(0, 100)
+                    setCurrentVolume(upnpExpectedVolume)
                     AndroidAutoPlugin.sendCommand("setVolume", mapOf("volume" to upnpExpectedVolume))
                 }
             }
