@@ -51,7 +51,7 @@ class PlayerProvider extends ChangeNotifier {
   bool _isPlaying = false;
   bool _isLoading = false;
   bool _shuffleEnabled = false;
-  final List<int> _shuffleHistory = [];
+  final List<String> _shuffleHistory = [];
   RepeatMode _repeatMode = RepeatMode.off;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
@@ -698,13 +698,15 @@ class PlayerProvider extends ChangeNotifier {
   Duration get duration => _duration;
   Song? get currentSong => _currentSong;
   bool get hasNext =>
-      _currentIndex < _queue.length - 1 ||
-      _repeatMode == RepeatMode.all ||
-      (_shuffleEnabled && _queue.length > 1);
+      _queue.isNotEmpty &&
+      (_currentIndex < _queue.length - 1 ||
+          _repeatMode == RepeatMode.all ||
+          (_shuffleEnabled && _queue.length > 1));
   bool get hasPrevious =>
-      _currentIndex > 0 ||
-      _repeatMode == RepeatMode.all ||
-      (_shuffleEnabled && _queue.length > 1);
+      _queue.isNotEmpty &&
+      (_currentIndex > 0 ||
+          _repeatMode == RepeatMode.all ||
+          (_shuffleEnabled && _shuffleHistory.isNotEmpty));
   double get volume => _volume;
 
   RadioStation? get currentRadioStation => _currentRadioStation;
@@ -846,7 +848,7 @@ class PlayerProvider extends ChangeNotifier {
 
         if (state.processingState == ProcessingState.completed) {
           debugPrint('[Player] ✓ Song completed: "${_currentSong?.title ?? 'unknown'}"');
-          _onSongComplete();
+          _onSongComplete().catchError((e) => debugPrint('[Player] _onSongComplete error: $e'));
         }
 
         if (state.processingState == ProcessingState.buffering && !wasPlaying) {
@@ -914,8 +916,7 @@ class PlayerProvider extends ChangeNotifier {
     );
   }
 
-  void _onSongComplete() {
-    
+  Future<void> _onSongComplete() async {
     if (_currentSong != null && _currentSong!.isLocal != true) {
       _subsonicService.scrobble(_currentSong!.id, submission: true).catchError((
         e,
@@ -942,14 +943,14 @@ class PlayerProvider extends ChangeNotifier {
     // "same song = togglePlayPause" guard and pausing instead of replaying)
     if (_repeatMode == RepeatMode.one ||
         (_repeatMode == RepeatMode.all && _queue.length == 1)) {
-      seek(Duration.zero);
-      play();
+      await seek(Duration.zero);
+      await play();
     } else if (_currentIndex < _queue.length - 1 ||
         _repeatMode == RepeatMode.all ||
         _shuffleEnabled) {
-      skipNext();
+      await skipNext();
     } else {
-      _handleEndOfQueue();
+      await _handleEndOfQueue();
     }
   }
 
@@ -1311,7 +1312,7 @@ class PlayerProvider extends ChangeNotifier {
     }
 
     if (_shuffleEnabled && _queue.length > 1) {
-      _shuffleHistory.add(_currentIndex);
+      _shuffleHistory.add(_currentSong!.id);
       if (_shuffleHistory.length > 50) _shuffleHistory.removeAt(0);
       int next;
       do {
@@ -1321,7 +1322,12 @@ class PlayerProvider extends ChangeNotifier {
     } else if (_currentIndex < _queue.length - 1) {
       await skipToIndex(_currentIndex + 1);
     } else if (_repeatMode == RepeatMode.all) {
-      await skipToIndex(0);
+      if (_queue.length == 1) {
+        await seek(Duration.zero);
+        await play();
+      } else {
+        await skipToIndex(0);
+      }
     }
   }
 
@@ -1349,12 +1355,18 @@ class PlayerProvider extends ChangeNotifier {
     if (_position.inSeconds > 3) {
       await seek(Duration.zero);
     } else if (_shuffleEnabled && _shuffleHistory.isNotEmpty) {
-      final prev = _shuffleHistory.removeLast();
-      await skipToIndex(prev);
+      final prevId = _shuffleHistory.removeLast();
+      final prev = _queue.indexWhere((s) => s.id == prevId);
+      if (prev != -1) await skipToIndex(prev);
     } else if (_currentIndex > 0) {
       await skipToIndex(_currentIndex - 1);
     } else if (_repeatMode == RepeatMode.all && _queue.isNotEmpty) {
-      await skipToIndex(_queue.length - 1);
+      if (_queue.length == 1) {
+        await seek(Duration.zero);
+        await play();
+      } else {
+        await skipToIndex(_queue.length - 1);
+      }
     } else {
       await seek(Duration.zero);
     }
@@ -1763,7 +1775,7 @@ class PlayerProvider extends ChangeNotifier {
       // the transport is stopped, which would cause the check to silently fail.
       debugPrint('UPnP: Track ended (pos=${pos.inSeconds}s, dur=${dur.inSeconds}s) — advancing');
       _upnpWasPlaying = false;
-      _onSongComplete();
+      _onSongComplete().catchError((e) => debugPrint('[Player] _onSongComplete error: $e'));
       return;
     }
 
