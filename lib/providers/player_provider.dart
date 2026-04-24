@@ -1635,6 +1635,9 @@ class PlayerProvider extends ChangeNotifier {
     _sleepTimerFadeTimer?.cancel();
     _castService.removeListener(_onCastStateChanged);
     _upnpService.removeListener(_onUpnpStateChanged);
+    if (_upnpService.onRendererLost == _onUpnpRendererLost) {
+      _upnpService.onRendererLost = null;
+    }
     _audioHandler.customAction('dispose');
     _androidAutoService.dispose();
     _androidSystemService.dispose();
@@ -1832,7 +1835,7 @@ class PlayerProvider extends ChangeNotifier {
   /// preserved [_position]. Load the song into the local player at the last
   /// known position, paused, so the user can resume wherever they want.
   /// Android routes audio to a connected A2DP device automatically.
-  void _onUpnpRendererLost() {
+  Future<void> _onUpnpRendererLost() async {
     final lastPosition = _position;
     final lastSong = _currentSong;
 
@@ -1847,11 +1850,20 @@ class PlayerProvider extends ChangeNotifier {
         ? Uri.file(lastSong.path!).toString()
         : _offlineService.getPlayableUrl(lastSong, _subsonicService);
 
-    _audioPlayer.setUrl(playUrl).then((_) async {
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      await _audioPlayer.setUrl(playUrl);
+      _position = lastPosition;
       await _audioPlayer.seek(lastPosition);
       // Leave paused — let the user consciously resume on their new output.
-    }).catchError((e) {
+    } catch (e) {
       debugPrint('UPnP fallback: failed to reload local player: $e');
-    });
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+      _updateAndroidAuto();
+    }
   }
 }

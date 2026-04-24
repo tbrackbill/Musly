@@ -239,14 +239,15 @@ class UpnpService extends ChangeNotifier {
 
   Future<bool> connect(UpnpDevice device) async {
     try {
-      
+
       await _soap(device.avTransportUrl, 'GetTransportInfo', '');
       _connectedDevice = device;
       debugPrint('UPnP: Connected to ${device.friendlyName}');
-      
+
       if (device.renderingControlUrl != null) {
         _volume = await getVolume();
       }
+      _consecutivePollErrors = 0;
       _startPolling();
       notifyListeners();
       return true;
@@ -265,6 +266,7 @@ class UpnpService extends ChangeNotifier {
     _rendererPosition = Duration.zero;
     _rendererDuration = Duration.zero;
     _volume = -1;
+    _consecutivePollErrors = 0;
     notifyListeners();
 
     if (device != null) {
@@ -354,6 +356,11 @@ class UpnpService extends ChangeNotifier {
       _consecutivePollErrors++;
       notifyListeners();
       debugPrint('UPnP: poll error: $e');
+      if (_consecutivePollErrors >= 30) {
+        debugPrint('UPnP: 30 consecutive poll failures — auto-disconnecting renderer');
+        disconnect();
+        onRendererLost?.call();
+      }
     } finally {
       _isPolling = false;
     }
