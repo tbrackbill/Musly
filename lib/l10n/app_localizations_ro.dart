@@ -12,226 +12,227 @@ class AppLocalizationsRo extends AppLocalizations {
   String get appName => 'Musly';
 
   @override
-  String get goodMorning => 'Good morning';
+  String get goodMorning => 'Bună dimineața';
 
   @override
-  String get goodAfternoon => 'Good afternoon';
+  String get goodAfternoon => 'Bună ziua';
 
   @override
-  String get goodEvening => 'Good evening';
+  String get goodEvening => 'Bună seara';
 
   @override
-  String get forYou => 'For You';
+  String get forYou => 'Pentru Tine';
 
   @override
-  String get quickPicks => 'Quick Picks';
+  String get quickPicks => 'Alegeri rapide';
 
   @override
-  String get discoverMix => 'Discover Mix';
+  String get discoverMix => 'Descoperă Mixul';
 
   @override
-  String get recentlyPlayed => 'Recently Played';
+  String get recentlyPlayed => 'Redate recent';
 
   @override
-  String get yourPlaylists => 'Your Playlists';
+  String get yourPlaylists => 'Playlisturile tale';
 
   @override
-  String get madeForYou => 'Made For You';
+  String get madeForYou => 'Creat pentru tine';
 
   @override
-  String get topRated => 'Top Rated';
+  String get topRated => 'Cele mai evaluate';
 
   @override
-  String get noContentAvailable => 'No content available';
+  String get noContentAvailable => 'Niciun conținut disponibil';
 
   @override
-  String get tryRefreshing => 'Try refreshing or check your server connection';
+  String get tryRefreshing =>
+      'Încercați să reîmprospătați sau să verificați conexiunea la server';
 
   @override
-  String get refresh => 'Refresh';
+  String get refresh => 'Reîncarcă';
 
   @override
-  String get errorLoadingSongs => 'Error loading songs';
+  String get errorLoadingSongs => 'Eroare la încărcarea melodiilor';
 
   @override
-  String get noSongsInGenre => 'No songs in this genre';
+  String get noSongsInGenre => 'Nu există melodii în acest gen';
 
   @override
-  String get errorLoadingAlbums => 'Error loading albums';
+  String get errorLoadingAlbums => 'Eroare la încărcarea albumelor';
 
   @override
-  String get noTopRatedAlbums => 'No top rated albums';
+  String get noTopRatedAlbums => 'Niciun album evaluat de top';
 
   @override
-  String get login => 'Login';
+  String get login => 'Conectează-te';
 
   @override
-  String get serverUrl => 'Server URL';
+  String get serverUrl => 'URL server';
 
   @override
-  String get username => 'Username';
+  String get username => 'Nume utilizator';
 
   @override
-  String get password => 'Password';
+  String get password => 'Parolă';
 
   @override
-  String get selectCertificate => 'Select TLS/SSL Certificate';
+  String get selectCertificate => 'Selectați certificatul TLS/SSL';
 
   @override
   String failedToSelectCertificate(String error) {
-    return 'Failed to select certificate: $error';
+    return 'Nu s-a putut selecta certificatul: $error';
   }
 
   @override
   String get serverUrlMustStartWith =>
-      'Server URL must start with http:// or https://';
+      'URL-ul serverului trebuie să înceapă cu http:// sau https://';
 
   @override
-  String get failedToConnect => 'Failed to connect';
+  String get failedToConnect => 'Nu s-a putut conecta';
 
   @override
-  String get library => 'Library';
+  String get library => 'Bibliotecă';
 
   @override
-  String get search => 'Search';
+  String get search => 'Caută';
 
   @override
-  String get settings => 'Settings';
+  String get settings => 'Setări';
 
   @override
-  String get albums => 'Albums';
+  String get albums => 'Albume';
 
   @override
-  String get artists => 'Artists';
+  String get artists => 'Artiști';
 
   @override
-  String get songs => 'Songs';
+  String get songs => 'Melodii';
 
   @override
-  String get playlists => 'Playlists';
+  String get playlists => 'Playlist-uri';
 
   @override
-  String get genres => 'Genres';
+  String get genres => 'Genuri';
 
   @override
-  String get favorites => 'Favorites';
+  String get favorites => 'Favorite';
 
   @override
-  String get nowPlaying => 'Now Playing';
+  String get nowPlaying => 'Se redă acum';
 
   @override
-  String get queue => 'Queue';
+  String get queue => 'Coadă';
 
   @override
-  String get lyrics => 'Lyrics';
+  String get lyrics => 'Versuri';
 
   @override
-  String get play => 'Play';
+  String get play => 'Redă';
 
   @override
-  String get pause => 'Pause';
+  String get pause => 'Pauză';
 
   @override
-  String get next => 'Next';
+  String get next => 'Următorul';
 
   @override
-  String get previous => 'Previous';
+  String get previous => 'Înapoi';
 
   @override
-  String get shuffle => 'Shuffle';
+  String get shuffle => 'Amestecă';
 
   @override
-  String get repeat => 'Repeat';
+  String get repeat => 'Repetă';
 
   @override
-  String get repeatOne => 'Repeat One';
+  String get repeatOne => 'Repetă una';
 
   @override
-  String get repeatOff => 'Repeat Off';
+  String get repeatOff => 'Nu repeta';
 
   @override
-  String get addToPlaylist => 'Add to Playlist';
+  String get addToPlaylist => 'Adaugă în Playlist';
 
   @override
-  String get removeFromPlaylist => 'Remove from Playlist';
+  String get removeFromPlaylist => 'Elimină din Playlist';
 
   @override
-  String get addToFavorites => 'Add to Favorites';
+  String get addToFavorites => 'Adaugă la Favorite';
 
   @override
-  String get removeFromFavorites => 'Remove from Favorites';
+  String get removeFromFavorites => 'Șterge de la Favorite';
 
   @override
   String get download => 'Download';
 
   @override
-  String get delete => 'Delete';
+  String get delete => 'Șterge';
 
   @override
-  String get cancel => 'Cancel';
+  String get cancel => 'Anulare';
 
   @override
-  String get ok => 'OK';
+  String get ok => 'Ok';
 
   @override
-  String get save => 'Save';
+  String get save => 'Salvați';
 
   @override
-  String get close => 'Close';
+  String get close => 'Închide';
 
   @override
   String get general => 'General';
 
   @override
-  String get appearance => 'Appearance';
+  String get appearance => 'Aspect';
 
   @override
-  String get playback => 'Playback';
+  String get playback => 'Redare';
 
   @override
-  String get storage => 'Storage';
+  String get storage => 'Stocare';
 
   @override
-  String get about => 'About';
+  String get about => 'Despre';
 
   @override
-  String get darkMode => 'Dark Mode';
+  String get darkMode => 'Mod întunecat';
 
   @override
-  String get language => 'Language';
+  String get language => 'Limba';
 
   @override
-  String get version => 'Version';
+  String get version => 'Versiune';
 
   @override
-  String get madeBy => 'Made by dddevid';
+  String get madeBy => 'Creat de ddddevid';
 
   @override
-  String get githubRepository => 'GitHub Repository';
+  String get githubRepository => 'Repozitoriu GitHub';
 
   @override
-  String get reportIssue => 'Report Issue';
+  String get reportIssue => 'Raportează o problemă';
 
   @override
-  String get joinDiscord => 'Join Discord Community';
+  String get joinDiscord => 'Alătură-te comunității Discord';
 
   @override
-  String get unknownArtist => 'Unknown Artist';
+  String get unknownArtist => 'Artist Necunoscut';
 
   @override
-  String get unknownAlbum => 'Unknown Album';
+  String get unknownAlbum => 'Album Necunoscut';
 
   @override
-  String get playAll => 'Play All';
+  String get playAll => 'Redaţi tot';
 
   @override
-  String get shuffleAll => 'Shuffle All';
+  String get shuffleAll => 'Amestecă toate';
 
   @override
-  String get sortBy => 'Sort by';
+  String get sortBy => 'Sortează după';
 
   @override
-  String get sortByName => 'Name';
+  String get sortByName => 'Nume';
 
   @override
   String get sortByArtist => 'Artist';
@@ -240,40 +241,40 @@ class AppLocalizationsRo extends AppLocalizations {
   String get sortByAlbum => 'Album';
 
   @override
-  String get sortByDate => 'Date';
+  String get sortByDate => 'Dată';
 
   @override
-  String get sortByDuration => 'Duration';
+  String get sortByDuration => 'Durată';
 
   @override
-  String get ascending => 'Ascending';
+  String get ascending => 'Crescător';
 
   @override
-  String get descending => 'Descending';
+  String get descending => 'Descrescător';
 
   @override
-  String get noLyricsAvailable => 'No lyrics available';
+  String get noLyricsAvailable => 'Nu există versuri disponibile';
 
   @override
-  String get loading => 'Loading...';
+  String get loading => 'Se încarcă...';
 
   @override
-  String get error => 'Error';
+  String get error => 'Eroare';
 
   @override
-  String get retry => 'Retry';
+  String get retry => 'Reîncercați';
 
   @override
-  String get noResults => 'No results';
+  String get noResults => 'Nici un rezultat';
 
   @override
-  String get searchHint => 'Search for songs, albums, artists...';
+  String get searchHint => 'Caută melodii, albume, artiști...';
 
   @override
-  String get allSongs => 'All Songs';
+  String get allSongs => 'Toate melodiile';
 
   @override
-  String get allAlbums => 'All Albums';
+  String get allAlbums => 'Toate albumele';
 
   @override
   String get allArtists => 'All Artists';
@@ -455,25 +456,25 @@ class AppLocalizationsRo extends AppLocalizations {
 
   @override
   String errorDeletingPlaylist(Object error) {
-    return 'Error deleting playlist: $error';
+    return 'Eroare la ștergerea playlist-ului: $error';
   }
 
   @override
   String playlistCreated(String name) {
-    return 'Playlist \"$name\" created';
+    return 'Playlist \"$name\" creat';
   }
 
   @override
-  String get searchTitle => 'Search';
+  String get searchTitle => 'Caută';
 
   @override
-  String get searchPlaceholder => 'Artists, Songs, Albums';
+  String get searchPlaceholder => 'Artiști, melodii, albume';
 
   @override
-  String get tryDifferentSearch => 'Try a different search';
+  String get tryDifferentSearch => 'Încearcă o altă căutare';
 
   @override
-  String get noSuggestions => 'No suggestions';
+  String get noSuggestions => 'Nicio sugestie';
 
   @override
   String get browseCategories => 'Browse Categories';

@@ -136,7 +136,7 @@ class AppLocalizationsRu extends AppLocalizations {
   String get next => 'Далее';
 
   @override
-  String get previous => 'Предыдущ.';
+  String get previous => 'Предыдущий';
 
   @override
   String get shuffle => 'Перемешивание';
@@ -154,7 +154,7 @@ class AppLocalizationsRu extends AppLocalizations {
   String get addToPlaylist => 'Добавить в плейлист';
 
   @override
-  String get removeFromPlaylist => 'Удалить из плейлиста';
+  String get removeFromPlaylist => 'Удалить трек из плейлиста';
 
   @override
   String get addToFavorites => 'Добавить в избранное';
@@ -481,29 +481,29 @@ class AppLocalizationsRu extends AppLocalizations {
   String get tryDifferentSearch => 'Попробуйте другой поисковый запрос';
 
   @override
-  String get noSuggestions => 'Нет предложений';
+  String get noSuggestions => 'Нет подходящих вариантов';
 
   @override
   String get browseCategories => 'Просмотреть категории';
 
   @override
-  String get liveSearchSection => 'Search';
+  String get liveSearchSection => 'Поиск';
 
   @override
-  String get liveSearch => 'Live Search';
+  String get liveSearch => 'Мгновенный поиск';
 
   @override
   String get liveSearchSubtitle =>
-      'Update results as you type instead of showing a dropdown';
+      'Сразу показывать результаты при вводе текста';
 
   @override
-  String get categoryMadeForYou => 'Сделано для вас';
+  String get categoryMadeForYou => 'Подборка для вас';
 
   @override
   String get categoryNewReleases => 'Новые выпуски';
 
   @override
-  String get categoryTopRated => 'Высоко оценённые';
+  String get categoryTopRated => 'С лучшим рейтингом';
 
   @override
   String get categoryGenres => 'Жанры';
@@ -518,7 +518,7 @@ class AppLocalizationsRu extends AppLocalizations {
   String get settingsTitle => 'Настройки';
 
   @override
-  String get tabPlayback => 'Проигрывание';
+  String get tabPlayback => 'Воспроизведение';
 
   @override
   String get tabStorage => 'Хранилище';
@@ -590,19 +590,19 @@ class AppLocalizationsRu extends AppLocalizations {
   String get modeAlbum => 'Альбом';
 
   @override
-  String get sectionServerConnection => 'ПОДКЛЮЧЕНИЕ СЕРВЕРА';
+  String get sectionServerConnection => 'ПОДКЛЮЧЕНИЕ К СЕРВЕРУ';
 
   @override
   String get serverType => 'Тип сервера';
 
   @override
-  String get notConnected => 'Не подключено';
+  String get notConnected => 'Нет подключения';
 
   @override
   String get unknown => 'Неизвестно';
 
   @override
-  String get sectionMusicFolders => 'ПАПКИ С МУЗЫКОЙ';
+  String get sectionMusicFolders => 'КАТАЛОГИ МУЗЫКИ';
 
   @override
   String get musicFolders => 'Папки с музыкой';
@@ -651,7 +651,7 @@ class AppLocalizationsRu extends AppLocalizations {
   String get sectionOfflineDownloads => 'АВТОНОМНЫЕ ЗАГРУЗКИ';
 
   @override
-  String get downloadedSongs => 'Загруженные песни';
+  String get downloadedSongs => 'Загруженные треки';
 
   @override
   String downloadingLibrary(int progress, int total) {
@@ -677,7 +677,7 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get noSongsAvailable =>
-      'Нет доступных песен. Пожалуйста, загрузите сначала вашу библиотеку.';
+      'Нет доступных треков. Пожалуйста, сначала добавьте файлы в библиотеку.';
 
   @override
   String get sectionBpmAnalysis => 'ОПРЕДЕЛЕНИЕ BPM';
@@ -852,7 +852,7 @@ class AppLocalizationsRu extends AppLocalizations {
   String get connected => 'Подключено';
 
   @override
-  String get noSongPlaying => 'Ничего не играет';
+  String get noSongPlaying => 'Трек не воспроизводится';
 
   @override
   String get internetRadioUppercase => 'ИНТЕРНЕТ-РАДИО';
@@ -964,7 +964,7 @@ class AppLocalizationsRu extends AppLocalizations {
   String get pleaseEnterPassword => 'Пожалуйста, введите пароль';
 
   @override
-  String get legacyAuthentication => 'Устаревшая аутентификация';
+  String get legacyAuthentication => 'Устаревший метод аутентификации';
 
   @override
   String get legacyAuthSubtitle => 'Использовать для старых серверов Subsonic';
@@ -1120,10 +1120,11 @@ class AppLocalizationsRu extends AppLocalizations {
   String get artistDataNotFound => 'Исполнитель не найден';
 
   @override
-  String get addedArtistToQueue => 'Added artist to Queue';
+  String get addedArtistToQueue => 'Исполнитель добавлен в очередь';
 
   @override
-  String get addedArtistToQueueError => 'Failed adding artist to Queue';
+  String get addedArtistToQueueError =>
+      'Не удалось добавить исполнителя в очередь';
 
   @override
   String get casting => 'Трансляция';
@@ -1309,191 +1310,193 @@ class AppLocalizationsRu extends AppLocalizations {
   String get noArtwork => 'Нет обложки';
 
   @override
-  String get serverUnreachableTitle => 'Cannot reach server';
+  String get serverUnreachableTitle => 'Не удаётся подключиться к серверу';
 
   @override
   String get serverUnreachableSubtitle =>
-      'Check your connection or server settings.';
+      'Проверьте подключение или настройки сервера.';
 
   @override
-  String get openOfflineMode => 'Open in offline mode';
+  String get openOfflineMode => 'Открыть в автономном режиме';
 
   @override
-  String get appearanceSection => 'Appearance';
+  String get appearanceSection => 'Оформление';
 
   @override
-  String get themeLabel => 'Theme';
+  String get themeLabel => 'Тема оформления';
 
   @override
-  String get accentColorLabel => 'Accent color';
+  String get accentColorLabel => 'Основной цвет';
 
   @override
-  String get circularDesignLabel => 'Circular Design';
+  String get circularDesignLabel => 'Дизайн с круглыми элементами';
 
   @override
   String get circularDesignSubtitle =>
-      'Floating, rounded UI with translucent panels and glass-blur effect on the player and navigation bar.';
+      'Интерфейс с плавающими, округлыми элементами и стеклянным размытием на плеере и панели.';
 
   @override
-  String get themeModeSystem => 'System';
+  String get themeModeSystem => 'Системная';
 
   @override
-  String get themeModeLight => 'Light';
+  String get themeModeLight => 'Светлая';
 
   @override
-  String get themeModeDark => 'Dark';
+  String get themeModeDark => 'Тёмная';
 
   @override
-  String get liveLabel => 'LIVE';
+  String get liveLabel => 'В ЭФИРЕ';
 
   @override
-  String get discordStatusText => 'Discord status text';
+  String get discordStatusText => 'Текст статуса Discord';
 
   @override
   String get discordStatusTextSubtitle =>
-      'Second line shown in Discord activity';
+      'Вторая строка, отображаемая в активности Discord';
 
   @override
-  String get discordRpcStyleArtist => 'Artist name';
+  String get discordRpcStyleArtist => 'Имя исполнителя';
 
   @override
-  String get discordRpcStyleSong => 'Song title';
+  String get discordRpcStyleSong => 'Название песни';
 
   @override
-  String get discordRpcStyleApp => 'App name (Musly)';
+  String get discordRpcStyleApp => 'Название приложения (Musly)';
 
   @override
-  String get sectionVolumeNormalization => 'VOLUME NORMALIZATION (REPLAYGAIN)';
+  String get sectionVolumeNormalization =>
+      'ВЫРАВНИВАНИЕ ГРОМКОСТИ (REPLAYGAIN)';
 
   @override
-  String get replayGainModeOff => 'Off';
+  String get replayGainModeOff => 'Выкл';
 
   @override
-  String get replayGainModeTrack => 'Track';
+  String get replayGainModeTrack => 'Трек';
 
   @override
-  String get replayGainModeAlbum => 'Album';
+  String get replayGainModeAlbum => 'Альбом';
 
   @override
   String replayGainPreamp(String value) {
-    return 'Preamp: $value dB';
+    return 'Предварительное усиление: $value дБ';
   }
 
   @override
-  String get replayGainPreventClipping => 'Prevent Clipping';
+  String get replayGainPreventClipping => 'Предотвращать искажения звука';
 
   @override
   String replayGainFallbackGain(String value) {
-    return 'Fallback Gain: $value dB';
+    return 'Усиление по умолчанию: $value дБ';
   }
 
   @override
   String autoDjSongsToAdd(int count) {
-    return 'Songs to Add: $count';
+    return 'Треков для добавления: $count';
   }
 
   @override
-  String get transcodingEnable => 'Enable Transcoding';
+  String get transcodingEnable => 'Использовать перекодирование';
 
   @override
   String get transcodingEnableSubtitle =>
-      'Reduce data usage with lower quality';
+      'Экономия трафика за счёт снижения качества';
 
   @override
-  String get smartTranscoding => 'Smart Transcoding';
+  String get smartTranscoding => 'Умное перекодирование';
 
   @override
   String get smartTranscodingSubtitle =>
-      'Automatically adjusts quality based on your connection (WiFi vs mobile data)';
+      'Автоподбор качества по типу сети (Wi-Fi / мобильные данные)';
 
   @override
-  String get smartTranscodingDetectedNetwork => 'Detected network: ';
+  String get smartTranscodingDetectedNetwork => 'Сеть обнаружена: ';
 
   @override
   String smartTranscodingActiveBitrate(String bitrate) {
-    return 'Active bitrate: $bitrate';
+    return 'Текущий битрейт: $bitrate';
   }
 
   @override
-  String get transcodingWifiQuality => 'WiFi Quality';
+  String get transcodingWifiQuality => 'Качество Wi-Fi';
 
   @override
   String get transcodingWifiQualitySubtitleSmart =>
-      'Used automatically on WiFi';
+      'Автоматически используется в Wi-Fi сети';
 
   @override
-  String get transcodingWifiQualitySubtitle => 'Bitrate when on WiFi';
+  String get transcodingWifiQualitySubtitle => 'Битрейт в сети Wi-Fi';
 
   @override
-  String get transcodingMobileQuality => 'Mobile Quality';
+  String get transcodingMobileQuality => 'Качество при мобильной сети';
 
   @override
   String get transcodingMobileQualitySubtitleSmart =>
-      'Used automatically on cellular data';
+      'Автоматически используется в мобильной сети';
 
   @override
-  String get transcodingMobileQualitySubtitle => 'Bitrate when on mobile data';
+  String get transcodingMobileQualitySubtitle =>
+      'Битрейт при использовании мобильных данных';
 
   @override
-  String get transcodingFormat => 'Format';
+  String get transcodingFormat => 'Формат';
 
   @override
-  String get transcodingFormatSubtitle => 'Audio codec used for streaming';
+  String get transcodingFormatSubtitle => 'Аудиокодек используется для вещания';
 
   @override
-  String get transcodingBitrateOriginal => 'Original (No Transcoding)';
+  String get transcodingBitrateOriginal => 'Оригинал (без перекодирования)';
 
   @override
-  String get transcodingFormatOriginal => 'Original';
+  String get transcodingFormatOriginal => 'Оригинал';
 
   @override
-  String get imageCacheTitle => 'Image Cache';
+  String get imageCacheTitle => 'Кэш изображений';
 
   @override
-  String get imageCacheSubtitle => 'Save album covers locally';
+  String get imageCacheSubtitle => 'Сохранить обложки альбома локально';
 
   @override
-  String get musicCacheTitle => 'Music Cache';
+  String get musicCacheTitle => 'Кэш аудиозаписей';
 
   @override
-  String get musicCacheSubtitle => 'Save song metadata locally';
+  String get musicCacheSubtitle => 'Сохранить метаданные трека локально';
 
   @override
-  String get bpmCacheTitle => 'BPM Cache';
+  String get bpmCacheTitle => 'Кэш BPM';
 
   @override
-  String get bpmCacheSubtitle => 'Save BPM analysis locally';
+  String get bpmCacheSubtitle => 'Хранить локально данные анализа BPM';
 
   @override
-  String get sectionAboutInformation => 'INFORMATION';
+  String get sectionAboutInformation => 'ИНФОРМАЦИЯ';
 
   @override
-  String get sectionAboutDeveloper => 'DEVELOPER';
+  String get sectionAboutDeveloper => 'РАЗРАБОТЧИК';
 
   @override
-  String get sectionAboutLinks => 'LINKS';
+  String get sectionAboutLinks => 'ССЫЛКИ';
 
   @override
-  String get aboutVersion => 'Version';
+  String get aboutVersion => 'Версия';
 
   @override
-  String get aboutPlatform => 'Platform';
+  String get aboutPlatform => 'Платформа';
 
   @override
-  String get aboutMadeBy => 'Made by dddevid';
+  String get aboutMadeBy => 'Сделано dddevid';
 
   @override
   String get aboutGitHub => 'github.com/dddevid';
 
   @override
-  String get aboutLinkGitHub => 'GitHub Repository';
+  String get aboutLinkGitHub => 'GitHub репозиторий';
 
   @override
-  String get aboutLinkChangelog => 'Changelog';
+  String get aboutLinkChangelog => 'Список изменений';
 
   @override
-  String get aboutLinkReportIssue => 'Report Issue';
+  String get aboutLinkReportIssue => 'Сообщить о проблеме';
 
   @override
-  String get aboutLinkDiscord => 'Join Discord Community';
+  String get aboutLinkDiscord => 'Присоединяйтесь к Discord сообществу';
 }
