@@ -24,6 +24,7 @@ import '../widgets/compact_lyrics_view.dart';
 import 'album_screen.dart';
 import '../widgets/multi_artist_widget.dart';
 import '../widgets/album_artwork.dart' show isLocalFilePath;
+import '../widgets/cast_button.dart';
 
 const _kCarouselGap = 40.0;
 
@@ -1184,6 +1185,7 @@ class _PlayerHeader extends StatelessWidget {
                   ),
                 ),
               ),
+              const CastButton(iconSize: 22),
               IconButton(
                 onPressed: () => _showQueue(context),
                 padding: const EdgeInsets.all(6),
