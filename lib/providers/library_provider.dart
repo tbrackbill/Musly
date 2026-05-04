@@ -653,6 +653,14 @@ class LibraryProvider extends ChangeNotifier {
       _saveCachedData();
       notifyListeners();
       _androidAutoService.updatePlaylists(_playlists, getCoverArtUrl);
+
+      // Retroactively register playlists that look downloaded (cached song lists available here).
+      // Then sync any new server songs into already-downloaded playlists.
+      final offlineService = OfflineService();
+      await offlineService.detectDownloadedPlaylists(
+        mergedPlaylists.where((p) => p.songs != null && p.songs!.isNotEmpty).toList(),
+      );
+      offlineService.syncDownloadedPlaylists(_subsonicService);
     } catch (e) {
       debugPrint('Error loading playlists: $e');
       if (_playlists.isEmpty && _cachedPlaylists.isNotEmpty) {
@@ -753,6 +761,9 @@ class LibraryProvider extends ChangeNotifier {
       _cachedPlaylists = List.from(_playlists);
       _saveCachedData();
       notifyListeners();
+
+      // Detect if user previously downloaded this playlist (fresh song list available here).
+      OfflineService().detectDownloadedPlaylists([playlist]);
 
       return playlist;
     } catch (e) {

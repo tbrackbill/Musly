@@ -166,7 +166,9 @@ class OfflineService {
     _checkAndUnmarkCompleted(merged);
   }
 
-  /// Removes playlists from the queued set if all their songs are now present.
+  /// Clears the crash-resume song list for playlists whose songs are all on disk.
+  /// Does NOT remove playlists from [queuedPlaylistIds] — that set is permanent
+  /// user intent ("keep this playlist synced") and is only cleared on explicit delete.
   void _checkAndUnmarkCompleted(Set<String> presentIds) {
     final nowDone = <String>{};
     for (final playlistId in queuedPlaylistIds.value) {
@@ -177,9 +179,37 @@ class OfflineService {
     }
     if (nowDone.isEmpty) return;
     for (final id in nowDone) { _queuedPlaylistData.remove(id); }
-    queuedPlaylistIds.value = queuedPlaylistIds.value.difference(nowDone);
-    _prefs?.setStringList(_keyQueuedPlaylists, queuedPlaylistIds.value.toList());
+    // Keep queuedPlaylistIds intact so syncDownloadedPlaylists can run on future refreshes.
     _prefs?.setString(_keyQueuedPlaylistData, json.encode(_queuedPlaylistData));
+  }
+
+  /// Scans [playlists] for ones that appear to have been downloaded previously
+  /// (≥50 % of their songs on disk, minimum 3 songs) and registers them in
+  /// [queuedPlaylistIds] so auto-sync can keep them up to date.
+  /// Safe to call with any playlist list; already-registered playlists are skipped.
+  Future<void> detectDownloadedPlaylists(List<Playlist> playlists) async {
+    if (_prefs == null) await initialize();
+    final ids = downloadedSongIds.value;
+    if (ids.isEmpty) return;
+
+    final newlyDetected = <String>{};
+    for (final playlist in playlists) {
+      if (queuedPlaylistIds.value.contains(playlist.id)) continue;
+      final songs = playlist.songs;
+      if (songs == null || songs.isEmpty) continue;
+      final downloadedCount = songs.where((s) => ids.contains(s.id)).length;
+      if (downloadedCount < 3) continue;
+      if (downloadedCount / songs.length < 0.5) continue;
+      newlyDetected.add(playlist.id);
+      // Persist the song list so resumeIncompleteDownloads can use it if needed.
+      _queuedPlaylistData[playlist.id] = songs.map((s) => s.toJson()).toList();
+    }
+
+    if (newlyDetected.isEmpty) return;
+    debugPrint('detectDownloadedPlaylists: auto-registered ${newlyDetected.length} playlist(s)');
+    queuedPlaylistIds.value = {...queuedPlaylistIds.value, ...newlyDetected};
+    await _prefs?.setStringList(_keyQueuedPlaylists, queuedPlaylistIds.value.toList());
+    await _prefs?.setString(_keyQueuedPlaylistData, json.encode(_queuedPlaylistData));
   }
 
   /// Queue a playlist for download. If the processor isn't running, start it.
@@ -221,6 +251,34 @@ class OfflineService {
       _checkAndUnmarkCompleted(downloadedSongIds.value);
     }
     _queueProcessorRunning = false;
+  }
+
+  /// Checks all queued/downloaded playlists against the server and automatically
+  /// queues any songs that were added to the playlist since the last download.
+  /// Safe to call fire-and-forget after a successful server sync.
+  Future<void> syncDownloadedPlaylists(SubsonicService subsonicService) async {
+    final ids = Set<String>.from(queuedPlaylistIds.value);
+    if (ids.isEmpty) return;
+
+    for (final playlistId in ids) {
+      try {
+        final playlist = await subsonicService.getPlaylist(playlistId);
+        final songs = playlist.songs ?? [];
+        if (songs.isEmpty) continue;
+
+        final newSongs = songs
+            .where((s) => !downloadedSongIds.value.contains(s.id))
+            .toList();
+        if (newSongs.isEmpty) continue;
+
+        debugPrint(
+          'syncDownloadedPlaylists: ${newSongs.length} new song(s) in playlist $playlistId',
+        );
+        await queuePlaylistDownload(playlistId, songs, subsonicService);
+      } catch (e) {
+        debugPrint('syncDownloadedPlaylists: failed to check playlist $playlistId: $e');
+      }
+    }
   }
 
   /// Called at startup to re-queue any playlists that were interrupted.
