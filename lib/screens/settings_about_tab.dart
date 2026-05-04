@@ -88,7 +88,7 @@ class _SettingsAboutTabState extends State<SettingsAboutTab> {
               context,
               icon: CupertinoIcons.doc_text,
               title: AppLocalizations.of(context)!.aboutLinkChangelog,
-              url: 'https://github.com/dddevid/Musly/releases/tag/v1.0.10',
+              url: 'https://github.com/tbrackbill/Musly/releases/tag/v1.0.10',
             ),
             _buildDivider(context),
             _buildLinkTile(
