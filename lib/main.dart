@@ -58,33 +58,12 @@ Future<bool> _isRunningOnEmulator() async {
 
   if (Platform.isAndroid) {
     final androidInfo = await deviceInfo.androidInfo;
-    final model = androidInfo.model?.toLowerCase() ?? '';
-    final brand = androidInfo.brand?.toLowerCase() ?? '';
-    final device = androidInfo.device?.toLowerCase() ?? '';
-    final product = androidInfo.product?.toLowerCase() ?? '';
-    final manufacturer = androidInfo.manufacturer?.toLowerCase() ?? '';
-
-    // Common emulator indicators
-    final emulatorIndicators = [
-      'sdk', 'emulator', 'simulator', 'google_sdk', 'sdk_x86',
-      'vbox86p', 'generic', 'generic_x86', 'generic_x86_64',
-      'unknown', 'google', 'nexus', 'test', 'ranchu',
-      'goldfish', 'android_x86', 'android_x86_64',
-    ];
-
-    final checkString = '$model $brand $device $product $manufacturer';
-    return emulatorIndicators.any((indicator) => checkString.contains(indicator));
+    return !androidInfo.isPhysicalDevice;
   }
 
   if (Platform.isIOS) {
     final iosInfo = await deviceInfo.iosInfo;
-    final model = iosInfo.model?.toLowerCase() ?? '';
-    final name = iosInfo.name?.toLowerCase() ?? '';
-
-    // iOS Simulator indicators
-    return model.contains('simulator') ||
-           name.contains('simulator') ||
-           !iosInfo.isPhysicalDevice;
+    return !iosInfo.isPhysicalDevice;
   }
 
   return false;
