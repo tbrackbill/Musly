@@ -299,6 +299,45 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
     }
   }
 
+  Future<void> _undownloadPlaylist() async {
+    final songs = _playlist?.songs;
+    if (songs == null || songs.isEmpty) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remove downloads'),
+        content: Text(
+          'Delete the ${songs.length} downloaded songs from "${_playlist!.name}"?\n\nThis cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Remove', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _isDownloading = true);
+    await OfflineService().undownloadPlaylist(widget.playlistId, songs);
+    if (mounted) {
+      setState(() => _isDownloading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Downloads removed for ${_playlist!.name}'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -397,16 +436,35 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
               onPressed: _toggleSelectMode,
             ),
             if (!isOffline)
-              IconButton(
-                tooltip: 'Download playlist',
-                onPressed: _isDownloading ? null : _downloadPlaylist,
-                icon: _isDownloading
-                    ? const SizedBox(
+              ValueListenableBuilder<Set<String>>(
+                valueListenable: OfflineService().downloadedSongIds,
+                builder: (context, ids, _) {
+                  final songs = _playlist!.songs ?? [];
+                  final allDownloaded = songs.isNotEmpty &&
+                      songs.every((s) => ids.contains(s.id));
+                  if (_isDownloading) {
+                    return const IconButton(
+                      onPressed: null,
+                      icon: SizedBox(
                         width: 20,
                         height: 20,
                         child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(CupertinoIcons.cloud_download),
+                      ),
+                    );
+                  }
+                  if (allDownloaded) {
+                    return IconButton(
+                      tooltip: 'Remove downloads',
+                      onPressed: _undownloadPlaylist,
+                      icon: const Icon(Icons.cloud_done, color: Colors.green),
+                    );
+                  }
+                  return IconButton(
+                    tooltip: 'Download playlist',
+                    onPressed: _downloadPlaylist,
+                    icon: const Icon(CupertinoIcons.cloud_download),
+                  );
+                },
               ),
           ],
         ],
