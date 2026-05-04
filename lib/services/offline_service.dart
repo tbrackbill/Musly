@@ -89,6 +89,7 @@ class OfflineService {
   static const String _keyExpectedSizes = 'offline_expected_sizes';
   static const String _keyQueuedPlaylists = 'offline_queued_playlists';
   static const String _keyQueuedPlaylistData = 'offline_queued_playlist_data';
+  static const String _keyPlaylistSongs = 'offline_playlist_songs';
 
   static const int _defaultParallelDownloads = 3;
   static const int _maxParallelDownloads = 5;
@@ -101,6 +102,10 @@ class OfflineService {
 
   /// playlistId → serialised song list, so we can resume without LibraryProvider.
   Map<String, List<Map<String, dynamic>>> _queuedPlaylistData = {};
+
+  /// Permanent map of playlistId → songIds for cross-referencing on removal.
+  /// Unlike [_queuedPlaylistData] this is never cleared after download completes.
+  Map<String, List<String>> _playlistSongIds = {};
 
   /// Sequential download queue: each entry is (playlistId, songs).
   final List<({String playlistId, List<Song> songs, SubsonicService service})>
@@ -162,6 +167,14 @@ class OfflineService {
     }
     queuedPlaylistIds.value = queuedIds.toSet();
 
+    final playlistSongsJson = _prefs?.getString(_keyPlaylistSongs);
+    if (playlistSongsJson != null) {
+      try {
+        final raw = json.decode(playlistSongsJson) as Map<String, dynamic>;
+        _playlistSongIds = raw.map((k, v) => MapEntry(k, (v as List).cast<String>()));
+      } catch (_) {}
+    }
+
     // Unmark any playlists that are now fully on disk
     _checkAndUnmarkCompleted(merged);
   }
@@ -197,12 +210,11 @@ class OfflineService {
       if (queuedPlaylistIds.value.contains(playlist.id)) continue;
       final songs = playlist.songs;
       if (songs == null || songs.isEmpty) continue;
-      final downloadedCount = songs.where((s) => ids.contains(s.id)).length;
-      if (downloadedCount < 3) continue;
-      if (downloadedCount / songs.length < 0.5) continue;
+      final anyDownloaded = songs.any((s) => ids.contains(s.id));
+      if (!anyDownloaded) continue;
       newlyDetected.add(playlist.id);
-      // Persist the song list so resumeIncompleteDownloads can use it if needed.
       _queuedPlaylistData[playlist.id] = songs.map((s) => s.toJson()).toList();
+      _playlistSongIds[playlist.id] = songs.map((s) => s.id).toList();
     }
 
     if (newlyDetected.isEmpty) return;
@@ -210,6 +222,7 @@ class OfflineService {
     queuedPlaylistIds.value = {...queuedPlaylistIds.value, ...newlyDetected};
     await _prefs?.setStringList(_keyQueuedPlaylists, queuedPlaylistIds.value.toList());
     await _prefs?.setString(_keyQueuedPlaylistData, json.encode(_queuedPlaylistData));
+    await _prefs?.setString(_keyPlaylistSongs, json.encode(_playlistSongIds));
   }
 
   /// Queue a playlist for download. If the processor isn't running, start it.
@@ -223,9 +236,11 @@ class OfflineService {
 
     // Persist queued state so outline badge appears immediately
     _queuedPlaylistData[playlistId] = songs.map((s) => s.toJson()).toList();
+    _playlistSongIds[playlistId] = songs.map((s) => s.id).toList();
     queuedPlaylistIds.value = {...queuedPlaylistIds.value, playlistId};
     await _prefs?.setStringList(_keyQueuedPlaylists, queuedPlaylistIds.value.toList());
     await _prefs?.setString(_keyQueuedPlaylistData, json.encode(_queuedPlaylistData));
+    await _prefs?.setString(_keyPlaylistSongs, json.encode(_playlistSongIds));
 
     // Filter to only songs that still need downloading
     final missing = songs.where((s) => !isSongDownloaded(s.id)).toList();
@@ -706,6 +721,36 @@ class OfflineService {
     }
   }
 
+  /// Deletes all downloaded files for the given playlist songs and removes the
+  /// playlist from the auto-sync tracking set.
+  Future<void> undownloadPlaylist(
+    String playlistId,
+    List<Song> songs,
+  ) async {
+    if (_offlineDir == null) await initialize();
+
+    // Build the union of song IDs belonging to every OTHER tracked playlist
+    // so we don't delete files that are still needed elsewhere.
+    final keptElsewhere = <String>{};
+    for (final entry in _playlistSongIds.entries) {
+      if (entry.key != playlistId) keptElsewhere.addAll(entry.value);
+    }
+
+    for (final song in songs) {
+      if (!keptElsewhere.contains(song.id)) {
+        await deleteSong(song.id);
+      }
+    }
+
+    final newQueued = Set<String>.from(queuedPlaylistIds.value)..remove(playlistId);
+    queuedPlaylistIds.value = newQueued;
+    _queuedPlaylistData.remove(playlistId);
+    _playlistSongIds.remove(playlistId);
+    await _prefs?.setStringList(_keyQueuedPlaylists, newQueued.toList());
+    await _prefs?.setString(_keyQueuedPlaylistData, json.encode(_queuedPlaylistData));
+    await _prefs?.setString(_keyPlaylistSongs, json.encode(_playlistSongIds));
+  }
+
   Future<void> deleteAllDownloads() async {
     if (_offlineDir == null) return;
 
@@ -723,8 +768,10 @@ class OfflineService {
       await _prefs?.remove(_keyExpectedSizes);
       await _prefs?.remove(_keyQueuedPlaylists);
       await _prefs?.remove(_keyQueuedPlaylistData);
+      await _prefs?.remove(_keyPlaylistSongs);
       _expectedSizes = {};
       _queuedPlaylistData = {};
+      _playlistSongIds = {};
       _downloadQueue.clear();
       queuedPlaylistIds.value = {};
       downloadedSongIds.value = {};
