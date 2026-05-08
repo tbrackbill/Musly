@@ -169,10 +169,12 @@ jobs:
           COUNTLY_APP_KEY: ${{ secrets.COUNTLY_APP_KEY }}
         run: |
           $key = $env:COUNTLY_APP_KEY
-          Write-Host "::add-mask::$key"
-          flutter build windows --release `
+          if ($key) { Write-Host "::add-mask::$key" }
+          $output = flutter build windows --release `
             --dart-define=COUNTLY_SERVER_URL="$env:COUNTLY_SERVER_URL" `
-            --dart-define=COUNTLY_APP_KEY="$key" 2>&1 | Select-String -Pattern $key -NotMatch
+            --dart-define=COUNTLY_APP_KEY="$key" 2>&1
+          if ($key) { $output | Select-String -Pattern $key -NotMatch } else { $output }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       
       - name: Install NSIS
         run: choco install nsis -y
