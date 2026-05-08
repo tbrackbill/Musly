@@ -62,22 +62,20 @@ jobs:
           COUNTLY_SERVER_URL: ${{ secrets.COUNTLY_SERVER_URL }}
           COUNTLY_APP_KEY: ${{ secrets.COUNTLY_APP_KEY }}
         run: |
-          # Mask secrets in logs (GitHub does this automatically, but we double-check)
-          echo "::add-mask::$COUNTLY_APP_KEY"
-          echo "Building with analytics configured..."
+          if [ -n "$COUNTLY_APP_KEY" ]; then echo "::add-mask::$COUNTLY_APP_KEY"; fi
           flutter build apk --release \
             --dart-define=COUNTLY_SERVER_URL="$COUNTLY_SERVER_URL" \
-            --dart-define=COUNTLY_APP_KEY="$COUNTLY_APP_KEY" 2>&1 | grep -v "$COUNTLY_APP_KEY" || true
-      
+            --dart-define=COUNTLY_APP_KEY="$COUNTLY_APP_KEY"
+
       - name: Build AppBundle (with encrypted analytics)
         env:
           COUNTLY_SERVER_URL: ${{ secrets.COUNTLY_SERVER_URL }}
           COUNTLY_APP_KEY: ${{ secrets.COUNTLY_APP_KEY }}
         run: |
-          echo "::add-mask::$COUNTLY_APP_KEY"
+          if [ -n "$COUNTLY_APP_KEY" ]; then echo "::add-mask::$COUNTLY_APP_KEY"; fi
           flutter build appbundle --release \
             --dart-define=COUNTLY_SERVER_URL="$COUNTLY_SERVER_URL" \
-            --dart-define=COUNTLY_APP_KEY="$COUNTLY_APP_KEY" 2>&1 | grep -v "$COUNTLY_APP_KEY" || true
+            --dart-define=COUNTLY_APP_KEY="$COUNTLY_APP_KEY"
       
       - name: Upload APKs
         uses: actions/upload-artifact@v4
@@ -116,10 +114,10 @@ jobs:
           COUNTLY_SERVER_URL: ${{ secrets.COUNTLY_SERVER_URL }}
           COUNTLY_APP_KEY: ${{ secrets.COUNTLY_APP_KEY }}
         run: |
-          echo "::add-mask::$COUNTLY_APP_KEY"
+          if [ -n "$COUNTLY_APP_KEY" ]; then echo "::add-mask::$COUNTLY_APP_KEY"; fi
           flutter build ios --release --no-codesign \
             --dart-define=COUNTLY_SERVER_URL="$COUNTLY_SERVER_URL" \
-            --dart-define=COUNTLY_APP_KEY="$COUNTLY_APP_KEY" 2>&1 | grep -v "$COUNTLY_APP_KEY" || true
+            --dart-define=COUNTLY_APP_KEY="$COUNTLY_APP_KEY"
       
       - name: Create IPA
         run: |
@@ -227,10 +225,10 @@ jobs:
           COUNTLY_SERVER_URL: ${{ secrets.COUNTLY_SERVER_URL }}
           COUNTLY_APP_KEY: ${{ secrets.COUNTLY_APP_KEY }}
         run: |
-          echo "::add-mask::$COUNTLY_APP_KEY"
+          if [ -n "$COUNTLY_APP_KEY" ]; then echo "::add-mask::$COUNTLY_APP_KEY"; fi
           flutter build linux --release \
             --dart-define=COUNTLY_SERVER_URL="$COUNTLY_SERVER_URL" \
-            --dart-define=COUNTLY_APP_KEY="$COUNTLY_APP_KEY" 2>&1 | grep -v "$COUNTLY_APP_KEY" || true
+            --dart-define=COUNTLY_APP_KEY="$COUNTLY_APP_KEY"
       
       - name: Upload Linux Build
         uses: actions/upload-artifact@v4
@@ -269,10 +267,10 @@ jobs:
           COUNTLY_SERVER_URL: ${{ secrets.COUNTLY_SERVER_URL }}
           COUNTLY_APP_KEY: ${{ secrets.COUNTLY_APP_KEY }}
         run: |
-          echo "::add-mask::$COUNTLY_APP_KEY"
+          if [ -n "$COUNTLY_APP_KEY" ]; then echo "::add-mask::$COUNTLY_APP_KEY"; fi
           flutter build macos --release \
             --dart-define=COUNTLY_SERVER_URL="$COUNTLY_SERVER_URL" \
-            --dart-define=COUNTLY_APP_KEY="$COUNTLY_APP_KEY" 2>&1 | grep -v "$COUNTLY_APP_KEY" || true
+            --dart-define=COUNTLY_APP_KEY="$COUNTLY_APP_KEY"
       
       - name: Upload macOS Build
         uses: actions/upload-artifact@v4
