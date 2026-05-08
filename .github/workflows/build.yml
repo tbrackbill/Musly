@@ -299,12 +299,6 @@ jobs:
           name: android-apk
           path: artifacts/android/
 
-      - name: Download iOS Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: ios-build
-          path: artifacts/ios/
-
       - name: Download Windows Artifacts
         uses: actions/download-artifact@v4
         with:
@@ -378,7 +372,6 @@ jobs:
             Contribute translations at [Crowdin](https://crowdin.com/project/musly)
           files: |
             artifacts/android/*.apk
-            artifacts/ios/*.ipa
             musly-setup.exe
             musly-windows.zip
             musly-linux-x64.tar.gz
