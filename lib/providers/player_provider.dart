@@ -1343,8 +1343,23 @@ class PlayerProvider extends ChangeNotifier {
     }
 
     if (_concatenatingSource != null) {
-      // With ConcatenatingAudioSource this only fires at the very end
-      // of the queue when LoopMode is off.
+      // ProcessingState.completed fires when ExoPlayer reaches the end of the
+      // ConcatenatingAudioSource (LoopMode.off). With LoopMode.all (repeat-all)
+      // ExoPlayer loops natively and this never fires.
+      //
+      // Also fires mid-queue if a stream fails to load; recover by advancing.
+      if (_currentIndex < _queue.length - 1) {
+        // Mid-queue: stream error or buffering failure — skip to next song.
+        await skipNext();
+        return;
+      }
+      // Genuine end of queue.
+      if (_shuffleEnabled && _queue.length > 1) {
+        // Shuffle without repeat: restart from a new random position so
+        // playback doesn't silently stop (e.g. while screen is off).
+        await skipNext();
+        return;
+      }
       await _handleEndOfQueue();
       return;
     }
