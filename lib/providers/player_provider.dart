@@ -391,6 +391,12 @@ class PlayerProvider extends ChangeNotifier {
       _bluetoothService.isA2dpConnected().then((active) {
         _isA2dpAudioActive = active;
         debugPrint('Bluetooth A2DP audio active: $_isA2dpAudioActive');
+        // Head units expect audio to start when they become the active output.
+        // If we have a song loaded but paused, resume it automatically.
+        if (active && _currentSong != null && !_isPlaying) {
+          debugPrint('Bluetooth A2DP connected with paused song — auto-resuming');
+          play();
+        }
       });
       _updateAllServices();
     };
