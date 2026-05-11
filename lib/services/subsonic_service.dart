@@ -34,8 +34,8 @@ class SubsonicService {
   static const String _apiVersion = '1.16.1';
 
   SubsonicService() : _dio = Dio() {
-    _dio.options.connectTimeout = const Duration(seconds: 30);
-    _dio.options.receiveTimeout = const Duration(seconds: 30);
+    _dio.options.connectTimeout = const Duration(seconds: 8);
+    _dio.options.receiveTimeout = const Duration(seconds: 8);
     _addLogInterceptor(_dio);
   }
 
@@ -133,8 +133,8 @@ class SubsonicService {
     String? clientCertPassword,
   }) async {
     _dio = Dio();
-    _dio.options.connectTimeout = const Duration(seconds: 30);
-    _dio.options.receiveTimeout = const Duration(seconds: 30);
+    _dio.options.connectTimeout = const Duration(seconds: 8);
+    _dio.options.receiveTimeout = const Duration(seconds: 8);
     _addLogInterceptor(_dio);
 
     final hasCustomServerCert =
