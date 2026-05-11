@@ -663,6 +663,12 @@ class LibraryProvider extends ChangeNotifier {
       _saveCachedData();
       notifyListeners();
       _androidAutoService.updatePlaylists(_playlists, getCoverArtUrl);
+
+      final offlineService = OfflineService();
+      await offlineService.detectDownloadedPlaylists(
+        mergedPlaylists.where((p) => p.songs != null && p.songs!.isNotEmpty).toList(),
+      );
+      offlineService.syncDownloadedPlaylists(_subsonicService);
     } catch (e) {
       debugPrint('Error loading playlists: $e');
       if (_playlists.isEmpty && _cachedPlaylists.isNotEmpty) {
@@ -761,6 +767,8 @@ class LibraryProvider extends ChangeNotifier {
       _cachedPlaylists = List.from(_playlists);
       _saveCachedData();
       notifyListeners();
+
+      OfflineService().detectDownloadedPlaylists([playlist]);
 
       return playlist;
     } catch (e) {

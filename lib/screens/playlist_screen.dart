@@ -288,24 +288,57 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
 
     setState(() => _isDownloading = true);
 
-    offlineService.startBackgroundDownload(songs, subsonicService).then((_) {
-      if (mounted) {
-        setState(() => _isDownloading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Downloaded ${songs.length} songs from ${_playlist!.name}',
-            ),
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
+    offlineService
+        .queuePlaylistDownload(widget.playlistId, songs, subsonicService)
+        .whenComplete(() {
+      if (mounted) setState(() => _isDownloading = false);
     });
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Downloading ${songs.length} songs in background…'),
+          content: Text(
+            'Queued ${songs.length} songs from ${_playlist!.name} for download…',
+          ),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  Future<void> _undownloadPlaylist() async {
+    final songs = _playlist?.songs;
+    if (songs == null || songs.isEmpty) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remove downloads'),
+        content: Text(
+          'Delete the ${songs.length} downloaded songs from "${_playlist!.name}"?\n\nThis cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Remove', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _isDownloading = true);
+    await OfflineService().undownloadPlaylist(widget.playlistId, songs);
+    if (mounted) {
+      setState(() => _isDownloading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Downloads removed for ${_playlist!.name}'),
           duration: const Duration(seconds: 2),
         ),
       );
@@ -478,35 +511,60 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
               onPressed: () => Navigator.pop(context),
             ),
             flexibleSpace: FlexibleSpaceBar(
-              background: Stack(
-                fit: StackFit.expand,
-                children: [
-                  Padding(
-                    padding: EdgeInsets.only(
-                      top: MediaQuery.of(context).padding.top + 40,
-                      left: ScreenHelper.isSmallScreen(context) ? 24 : 40,
-                      right: ScreenHelper.isSmallScreen(context) ? 24 : 40,
-                      bottom: ScreenHelper.isSmallScreen(context) ? 60 : 80,
-                    ),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: AppTheme.appleMusicRed.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(12),
+              background: ValueListenableBuilder<Set<String>>(
+                valueListenable: OfflineService().downloadedSongIds,
+                builder: (context, ids, _) {
+                  final songs = _playlist!.songs ?? [];
+                  final allDownloaded =
+                      songs.isNotEmpty && songs.every((s) => ids.contains(s.id));
+                  final smallScreen = ScreenHelper.isSmallScreen(context);
+                  return Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Padding(
+                        padding: EdgeInsets.only(
+                          top: MediaQuery.of(context).padding.top + 40,
+                          left: smallScreen ? 24 : 40,
+                          right: smallScreen ? 24 : 40,
+                          bottom: smallScreen ? 60 : 80,
+                        ),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: AppTheme.appleMusicRed.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: _playlist!.coverArt != null
+                              ? AlbumArtwork(
+                                  coverArt: _playlist!.coverArt,
+                                  size: 150,
+                                  borderRadius: 12,
+                                )
+                              : const Icon(
+                                  CupertinoIcons.music_note_list,
+                                  color: AppTheme.appleMusicRed,
+                                  size: 64,
+                                ),
+                        ),
                       ),
-                      child: _playlist!.coverArt != null
-                          ? AlbumArtwork(
-                              coverArt: _playlist!.coverArt,
-                              size: 150,
-                              borderRadius: 12,
-                            )
-                          : const Icon(
-                              CupertinoIcons.music_note_list,
-                              color: AppTheme.appleMusicRed,
-                              size: 64,
+                      if (allDownloaded)
+                        Positioned(
+                          bottom: smallScreen ? 66 : 86,
+                          right: smallScreen ? 30 : 46,
+                          child: Container(
+                            decoration: const BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
                             ),
-                    ),
-                  ),
-                ],
+                            child: const Icon(
+                              Icons.check_circle,
+                              color: Colors.green,
+                              size: 28,
+                            ),
+                          ),
+                        ),
+                    ],
+                  );
+                },
               ),
             ),
             actions: [
@@ -564,16 +622,35 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                   onPressed: _toggleSelectMode,
                 ),
                 if (!isOffline)
-                  IconButton(
-                    tooltip: 'Download playlist',
-                    onPressed: _isDownloading ? null : _downloadPlaylist,
-                    icon: _isDownloading
-                        ? const SizedBox(
+                  ValueListenableBuilder<Set<String>>(
+                    valueListenable: OfflineService().downloadedSongIds,
+                    builder: (context, ids, _) {
+                      final songs = _playlist!.songs ?? [];
+                      final allDownloaded = songs.isNotEmpty &&
+                          songs.every((s) => ids.contains(s.id));
+                      if (_isDownloading) {
+                        return const IconButton(
+                          onPressed: null,
+                          icon: SizedBox(
                             width: 20,
                             height: 20,
                             child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(CupertinoIcons.cloud_download),
+                          ),
+                        );
+                      }
+                      if (allDownloaded) {
+                        return IconButton(
+                          tooltip: 'Remove downloads',
+                          onPressed: _undownloadPlaylist,
+                          icon: const Icon(Icons.cloud_done, color: Colors.green),
+                        );
+                      }
+                      return IconButton(
+                        tooltip: 'Download playlist',
+                        onPressed: _downloadPlaylist,
+                        icon: const Icon(CupertinoIcons.cloud_download),
+                      );
+                    },
                   ),
               ],
             ],
