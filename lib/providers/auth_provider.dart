@@ -58,10 +58,10 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
 
     PingResult? pingResult;
-    const maxAttempts = 3;
+    const maxAttempts = 2;
     for (int attempt = 1; attempt <= maxAttempts; attempt++) {
       pingResult = await _subsonicService.pingWithError().timeout(
-            const Duration(seconds: 10),
+            const Duration(seconds: 3),
             onTimeout: () =>
                 PingResult(success: false, error: 'Connection timed out'),
           );
