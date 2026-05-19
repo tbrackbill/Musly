@@ -423,6 +423,8 @@ class SubsonicService {
   /// Returns the /download URL for a song — always original file, no transcoding.
   /// Use this for offline downloads so file size matches song.size exactly.
   String getDownloadUrl(String songId) {
+    if (_jellyfin != null) return _jellyfin!.getDownloadUrl(songId);
+    if (_youtube != null) return _youtube!.getStreamUrl(songId);
     return _buildUrl('download', {'id': songId});
   }
 

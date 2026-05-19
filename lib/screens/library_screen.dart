@@ -647,6 +647,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
               );
               try {
                 await OfflineService().cancelPlaylistDownload(item.id);
+              } catch (_) {}
+              try {
                 await libraryProvider.deletePlaylist(item.id);
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(

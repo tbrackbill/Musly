@@ -157,7 +157,9 @@ class PlaylistsScreen extends StatelessWidget {
                 title: const Text('Delete Playlist'),
                 onTap: () async {
                   Navigator.pop(context);
-                  await OfflineService().cancelPlaylistDownload(playlist.id);
+                  try {
+                    await OfflineService().cancelPlaylistDownload(playlist.id);
+                  } catch (_) {}
                   await libraryProvider.deletePlaylist(playlist.id);
                 },
               ),

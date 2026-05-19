@@ -130,6 +130,11 @@ class JellyfinService {
         '${_token != null ? '&api_key=$_token' : ''}';
   }
 
+  String getDownloadUrl(String songId) {
+    final url = '$_baseUrl/Items/$songId/File';
+    return _token != null ? '$url?api_key=$_token' : url;
+  }
+
   String getStreamUrl(String songId, {int? maxBitRate, String? format}) {
     final params = StringBuffer(
       '$_baseUrl/Audio/$songId/universal'

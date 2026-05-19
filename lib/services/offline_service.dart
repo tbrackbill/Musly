@@ -610,7 +610,10 @@ class OfflineService {
       final retryFailed = <Song>[];
       for (final song in toRetry) {
         if (!_isBackgroundDownloadActive) break;
+        final logIdx = downloadLog.value.indexWhere((e) => e.song.id == song.id);
+        if (logIdx >= 0) _updateLogEntry(logIdx, DownloadStatus.downloading);
         final success = await downloadSong(song, subsonicService);
+        if (logIdx >= 0) _updateLogEntry(logIdx, success ? DownloadStatus.done : DownloadStatus.failed);
         if (!success) retryFailed.add(song);
       }
       downloadState.value = downloadState.value.copyWith(

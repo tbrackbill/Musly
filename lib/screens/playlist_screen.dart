@@ -572,22 +572,48 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                       right: ScreenHelper.isSmallScreen(context) ? 24 : 40,
                       bottom: ScreenHelper.isSmallScreen(context) ? 60 : 80,
                     ),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: AppTheme.appleMusicRed.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: _playlist!.coverArt != null
-                          ? AlbumArtwork(
-                              coverArt: _playlist!.coverArt,
-                              size: 150,
-                              borderRadius: 12,
-                            )
-                          : const Icon(
-                              CupertinoIcons.music_note_list,
-                              color: AppTheme.appleMusicRed,
-                              size: 64,
+                    child: ValueListenableBuilder<Set<String>>(
+                      valueListenable: OfflineService().downloadedPlaylistIds,
+                      builder: (context, downloaded, _) {
+                        final allDownloaded = downloaded.contains(widget.playlistId);
+                        return Stack(
+                          children: [
+                            Container(
+                              decoration: BoxDecoration(
+                                color: AppTheme.appleMusicRed.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: _playlist!.coverArt != null
+                                  ? AlbumArtwork(
+                                      coverArt: _playlist!.coverArt,
+                                      size: 150,
+                                      borderRadius: 12,
+                                    )
+                                  : const Icon(
+                                      CupertinoIcons.music_note_list,
+                                      color: AppTheme.appleMusicRed,
+                                      size: 64,
+                                    ),
                             ),
+                            if (allDownloaded)
+                              Positioned(
+                                bottom: 6,
+                                right: 6,
+                                child: Container(
+                                  decoration: const BoxDecoration(
+                                    color: Colors.white,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.check_circle,
+                                    color: Colors.green,
+                                    size: 24,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        );
+                      },
                     ),
                   ),
                 ],
