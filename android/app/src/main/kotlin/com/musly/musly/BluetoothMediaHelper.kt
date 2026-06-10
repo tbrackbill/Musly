@@ -183,21 +183,53 @@ class BluetoothMediaHelper(private val context: Context) {
     
     @SuppressLint("MissingPermission")
     private fun getAvrcpVersion(device: BluetoothDevice): Int {
+        // Read access to persist.* system properties is not SELinux-blocked for
+        // normal app processes on most Android versions, giving us the actual
+        // version Android is advertising rather than guessing from API level.
+        val sysPropVersion = readSystemAvrcpVersion()
+        if (sysPropVersion != -1) return sysPropVersion
+
+        // Fallback: conservative estimate. Previously assumed 1.6 for all Android
+        // 8+ audio devices, incorrectly enabling album-art for older car head units.
+        // Default to 1.4 — safe floor; album art works, browsing not assumed.
         return try {
             val deviceClass = device.bluetoothClass
             when {
                 deviceClass == null -> AVRCP_VERSION_1_3
-                deviceClass.majorDeviceClass == android.bluetooth.BluetoothClass.Device.Major.AUDIO_VIDEO -> {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        AVRCP_VERSION_1_6
-                    } else {
-                        AVRCP_VERSION_1_4
-                    }
-                }
+                deviceClass.majorDeviceClass == android.bluetooth.BluetoothClass.Device.Major.AUDIO_VIDEO ->
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) AVRCP_VERSION_1_4
+                    else AVRCP_VERSION_1_3
                 else -> AVRCP_VERSION_1_3
             }
         } catch (e: Exception) {
             AVRCP_VERSION_1_3
+        }
+    }
+
+    private fun readSystemAvrcpVersion(): Int {
+        return try {
+            val clazz = Class.forName("android.os.SystemProperties")
+            val get = clazz.getMethod("get", String::class.java, String::class.java)
+            when (get.invoke(null, "persist.bluetooth.avrcpversion", "") as String) {
+                "avrcp13" -> AVRCP_VERSION_1_3
+                "avrcp14" -> AVRCP_VERSION_1_4
+                "avrcp15" -> AVRCP_VERSION_1_5
+                "avrcp16" -> AVRCP_VERSION_1_6
+                else -> -1
+            }
+        } catch (e: Exception) {
+            Log.d(TAG, "Could not read persist.bluetooth.avrcpversion: ${e.message}")
+            -1
+        }
+    }
+
+    fun getSystemAvrcpVersionString(): String {
+        return try {
+            val clazz = Class.forName("android.os.SystemProperties")
+            val get = clazz.getMethod("get", String::class.java, String::class.java)
+            get.invoke(null, "persist.bluetooth.avrcpversion", "unknown") as String
+        } catch (e: Exception) {
+            "unknown"
         }
     }
     
@@ -382,6 +414,9 @@ class BluetoothMediaHelper(private val context: Context) {
                 val volume = call.argument<Double>("volume")?.toFloat() ?: 1.0f
                 setVolume(volume)
                 result.success(null)
+            }
+            "getSystemAvrcpVersion" -> {
+                result.success(getSystemAvrcpVersionString())
             }
             "registerAbsoluteVolumeControl" -> {
                 result.success(true)

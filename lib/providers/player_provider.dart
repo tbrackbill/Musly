@@ -70,6 +70,14 @@ class PlayerProvider extends ChangeNotifier {
   /// UPnP renderer is connected, the audio is still local, so this stays false.
   bool _isRenderingRemotely = false;
 
+  /// Set true when audio focus is requested but delayed (another app held it).
+  /// onAudioFocusGain will call play() when focus is eventually granted.
+  bool _shouldResumeOnFocusGain = false;
+
+  /// Emits the connected device when a BT hint should be shown to the user.
+  final ValueNotifier<BluetoothDeviceInfo?> pendingBluetoothAvrcpHint = ValueNotifier(null);
+  bool _bluetoothHintShownThisSession = false;
+
   String? _resolvedArtworkUrl;
 
   RadioStation? _currentRadioStation;
@@ -370,6 +378,10 @@ class PlayerProvider extends ChangeNotifier {
     _androidSystemService.onAudioFocusGain = () {
       if (isRemotePlayback) return;
       _audioPlayer.setVolume(_volume);
+      if (_shouldResumeOnFocusGain) {
+        _shouldResumeOnFocusGain = false;
+        play();
+      }
     };
     _androidSystemService.onBecomingNoisy = () {
       if (isRemotePlayback) return;
@@ -385,12 +397,26 @@ class PlayerProvider extends ChangeNotifier {
     _bluetoothService.onSeekTo = seek;
     _bluetoothService.onDeviceConnected = (device) {
       debugPrint('Bluetooth device connected: ${device.name}');
-      // AVRCP support means the device can handle audio controls, which is
-      // a reliable proxy for A2DP audio output (watches/controllers don't
-      // advertise AVRCP). Re-query isA2dpConnected for ground truth.
       _bluetoothService.isA2dpConnected().then((active) {
         _isA2dpAudioActive = active;
         debugPrint('Bluetooth A2DP audio active: $_isA2dpAudioActive');
+        if (active) {
+          // Pre-warm the audio source so the first AVRCP PLAY command doesn't
+          // stall waiting for ConcatenatingAudioSource to be built from scratch.
+          if (_currentSong != null && !_isRenderingRemotely &&
+              _audioPlayer.audioSource == null) {
+            _prepareCurrentSong().catchError(
+              (e) => debugPrint('[Player] BT pre-warm failed: $e'),
+            );
+          }
+          // Show AVRCP hint once per session, skip if already dismissed.
+          if (!_bluetoothHintShownThisSession) {
+            _bluetoothHintShownThisSession = true;
+            _prefs?.getBool('bluetooth_avrcp_hint_dismissed') == true
+                ? null
+                : pendingBluetoothAvrcpHint.value = device;
+          }
+        }
       });
       _updateAllServices();
     };
@@ -1314,6 +1340,7 @@ class PlayerProvider extends ChangeNotifier {
     if (kIsWeb || !Platform.isAndroid) return;
     try {
       final granted = await _androidSystemService.requestAudioFocus();
+      if (!granted) _shouldResumeOnFocusGain = true;
       debugPrint('[Player] Audio focus requested, granted=$granted');
     } catch (e) {
       debugPrint('[Player] Audio focus request failed: $e');
@@ -1342,7 +1369,7 @@ class PlayerProvider extends ChangeNotifier {
       return;
     }
 
-    if (_concatenatingSource != null) {
+    if (_concatenatingSource != null && !_isRenderingRemotely) {
       // With ConcatenatingAudioSource this only fires at the very end
       // of the queue when LoopMode is off.
       await _handleEndOfQueue();
@@ -1444,10 +1471,6 @@ class PlayerProvider extends ChangeNotifier {
       );
 
       if (_castService.isConnected) {
-        // Local ConcatenatingAudioSource is not used in remote-playback mode.
-        // Leaving it non-null causes _onSongComplete / skipNext to route to the
-        // local player instead of calling playSong() for the next track.
-        _concatenatingSource = null;
         // Reset so a poll mid-load doesn't mistake the idle state for a track end.
         _castWasPlaying = false;
         if (_audioPlayer.playing) await _audioPlayer.stop();
@@ -1476,9 +1499,6 @@ class PlayerProvider extends ChangeNotifier {
         // Reset before sending Stop so a poll that fires mid-load can't
         // mistake the STOPPED state for a natural track end and advance twice.
         _upnpWasPlaying = false;
-        // Same as Cast: clear the local ConcatenatingAudioSource so
-        // _onSongComplete() and skipNext() route through playSong() → UPnP.
-        _concatenatingSource = null;
         debugPrint(
           'UPnP: playSong() taking UPnP branch, isConnected=${_upnpService.isConnected}',
         );
@@ -1830,6 +1850,7 @@ class PlayerProvider extends ChangeNotifier {
   }
 
   Future<void> pause() async {
+    _shouldResumeOnFocusGain = false;
     if (_jukeboxService.enabled) {
       await _jukeboxService.pause(_subsonicService);
       _isPlaying = false;
@@ -1853,6 +1874,7 @@ class PlayerProvider extends ChangeNotifier {
   }
 
   Future<void> stop() async {
+    _shouldResumeOnFocusGain = false;
     if (_castService.isConnected) {
       await _castService.stop();
     } else if (_upnpService.isConnected) {
@@ -1866,6 +1888,16 @@ class PlayerProvider extends ChangeNotifier {
     _position = Duration.zero;
     notifyListeners();
     _updateAndroidAuto();
+
+    if (!kIsWeb && Platform.isAndroid) {
+      _androidSystemService.abandonAudioFocus();
+      try {
+        final session = await AudioSession.instance;
+        await session.setActive(false);
+      } catch (e) {
+        debugPrint('[Player] Failed to deactivate audio session on stop: $e');
+      }
+    }
   }
 
   Future<void> togglePlayPause() async {
@@ -1923,7 +1955,7 @@ class PlayerProvider extends ChangeNotifier {
       await _addAutoDjSongs();
     }
 
-    if (_concatenatingSource != null) {
+    if (_concatenatingSource != null && !_isRenderingRemotely) {
       if (_shuffleEnabled && _queue.length > 1) {
         _shuffleHistory.add(_currentSong!.id);
         if (_shuffleHistory.length > 50) _shuffleHistory.removeAt(0);
@@ -2001,7 +2033,7 @@ class PlayerProvider extends ChangeNotifier {
       return;
     }
 
-    if (_concatenatingSource != null) {
+    if (_concatenatingSource != null && !_isRenderingRemotely) {
       if (_shuffleEnabled && _shuffleHistory.isNotEmpty) {
         final prevId = _shuffleHistory.removeLast();
         final prev = _queue.indexWhere((s) => s.id == prevId);
@@ -2040,7 +2072,7 @@ class PlayerProvider extends ChangeNotifier {
 
   Future<void> skipToIndex(int index) async {
     if (index >= 0 && index < _queue.length) {
-      if (_concatenatingSource != null) {
+      if (_concatenatingSource != null && !_isRenderingRemotely) {
         await _audioPlayer.seek(Duration.zero, index: index);
       } else {
         await playSong(_queue[index], playlist: _queue, startIndex: index);
