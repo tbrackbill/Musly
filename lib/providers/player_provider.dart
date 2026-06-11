@@ -1839,9 +1839,10 @@ class PlayerProvider extends ChangeNotifier {
     } else {
       // After app restart the audio source may not be loaded yet.
       // If we have a current song but the player has no source, prepare it first.
-      if (_currentSong != null &&
-          (_audioPlayer.audioSource == null ||
-              _audioPlayer.duration == Duration.zero)) {
+      // NOTE: intentionally NOT checking duration==zero — during gapless transitions
+      // duration briefly hits 0, and triggering setAudioSource() here would destroy
+      // the ExoPlayer AudioTrack and cause A2DP stream renegotiation → silent track 2.
+      if (_currentSong != null && _audioPlayer.audioSource == null) {
         await _prepareCurrentSong();
       }
       await _ensureAudioFocus();
@@ -2318,7 +2319,10 @@ class PlayerProvider extends ChangeNotifier {
 
   Future<void> _buildAndSetConcatenatingSource({required int initialIndex}) async {
     final children = await Future.wait(_queue.map(_buildAudioSourceForSong));
-    _concatenatingSource = ConcatenatingAudioSource(children: children);
+    _concatenatingSource = ConcatenatingAudioSource(
+      useLazyPreparation: false,
+      children: children,
+    );
     await _audioPlayer.setAudioSource(
       _concatenatingSource!,
       initialIndex: initialIndex,
@@ -2429,6 +2433,21 @@ class PlayerProvider extends ChangeNotifier {
 
     _updateAllServices();
     _updateAndroidAuto();
+
+    // Re-assert audio focus after gapless auto-advance and ensure ExoPlayer is
+    // actively playing. On Android A2DP, the BT HAL can silently stall the audio
+    // stream when the source transitions between tracks (AudioTrack reconfiguration
+    // + codec renegotiation). Re-requesting focus + calling play() after the
+    // transition settles kicks the A2DP stream back into an active state.
+    if (_isPlaying && !_isRenderingRemotely) {
+      await Future.delayed(const Duration(milliseconds: 250));
+      if (_isPlaying && !_isRenderingRemotely) {
+        await _ensureAudioFocus();
+        if (!_audioPlayer.playing) {
+          await _audioPlayer.play();
+        }
+      }
+    }
   }
 
   Future<void> _applyReplayGain(Song? song) async {
