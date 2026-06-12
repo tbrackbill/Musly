@@ -23,6 +23,15 @@ object AndroidAutoPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     private var context: Context? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    /** True while the Flutter isolate has an active EventChannel subscription. */
+    val isFlutterConnected get() = eventSink != null
+
+    /**
+     * AVRCP command (e.g. "play") to deliver once Flutter reconnects.
+     * Set by MusicService when a media-button fires before Flutter is attached.
+     */
+    var pendingCommand: String? = null
+
     // Buffers for library data sent before MusicService finishes starting.
     private var pendingRecentSongs: List<Map<String, Any>>? = null
     private var pendingAlbums: List<Map<String, Any>>? = null
@@ -39,6 +48,14 @@ object AndroidAutoPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         eventChannel?.setStreamHandler(object : EventChannel.StreamHandler {
             override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
                 eventSink = events
+                // Flutter has reconnected. If a media button (e.g. PLAY from the head
+                // unit) arrived while the engine was dead, deliver it now. The 600ms
+                // delay gives PlayerProvider time to finish wiring its callbacks.
+                val cmd = pendingCommand
+                if (cmd != null) {
+                    pendingCommand = null
+                    mainHandler.postDelayed({ sendCommand(cmd, null) }, 600)
+                }
             }
 
             override fun onCancel(arguments: Any?) {

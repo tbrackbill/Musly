@@ -105,7 +105,7 @@ class MusicService : MediaBrowserServiceCompat() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d(TAG, "MusicService onStartCommand action=${intent?.action}")
         MediaButtonReceiver.handleIntent(mediaSession, intent)
-        return START_NOT_STICKY
+        return START_STICKY
     }
 
     private fun showIdleNotification() {
@@ -844,7 +844,18 @@ class MusicService : MediaBrowserServiceCompat() {
 
     private inner class MediaSessionCallback : MediaSessionCompat.Callback() {
         override fun onPlay() {
-            AndroidAutoPlugin.sendCommand("play", null)
+            if (AndroidAutoPlugin.isFlutterConnected) {
+                AndroidAutoPlugin.sendCommand("play", null)
+            } else {
+                // Flutter engine not connected (cold start or OS kill).
+                // Launch the app — once the Flutter engine attaches and subscribes to
+                // the event channel, AndroidAutoPlugin will flush the pending "play".
+                AndroidAutoPlugin.pendingCommand = "play"
+                val intent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                }
+                if (intent != null) startActivity(intent)
+            }
         }
 
         override fun onPause() {
@@ -944,10 +955,10 @@ class MusicService : MediaBrowserServiceCompat() {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        Log.d(TAG, "MusicService onTaskRemoved")
+        Log.d(TAG, "MusicService onTaskRemoved — keeping alive for BT/background playback")
         super.onTaskRemoved(rootIntent)
-        mediaSession.isActive = false
-        stopForeground(true)
-        stopSelf()
+        // Intentionally NOT stopping. The foreground service must outlive its task so
+        // the MediaSession stays active and AVRCP PLAY from a head unit reaches the app.
+        // The user can stop playback explicitly from the notification or in-app.
     }
 }
