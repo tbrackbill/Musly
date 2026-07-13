@@ -6,7 +6,9 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/providers.dart';
+import '../services/bluetooth_avrcp_service.dart';
 import '../services/local_music_service.dart';
 import '../services/recommendation_service.dart';
 import '../services/theme_service.dart';
@@ -76,6 +78,14 @@ class _MainScreenState extends State<MainScreen> {
       playerProvider.setLibraryProvider(libraryProvider);
       playerProvider.setRecommendationService(recommendationService);
 
+      playerProvider.pendingBluetoothAvrcpHint.addListener(() {
+        final device = playerProvider.pendingBluetoothAvrcpHint.value;
+        if (device != null && mounted) {
+          playerProvider.pendingBluetoothAvrcpHint.value = null;
+          _showBluetoothAvrcpHint(playerProvider, device);
+        }
+      });
+
       if (authProvider.isLocalOnlyMode) {
         final localMusicService = Provider.of<LocalMusicService>(
           context,
@@ -105,6 +115,51 @@ class _MainScreenState extends State<MainScreen> {
         if (mounted) _checkForUpdate();
       });
     });
+  }
+
+  void _showBluetoothAvrcpHint(PlayerProvider playerProvider, BluetoothDeviceInfo device) {
+    if (!Platform.isAndroid) return;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Bluetooth Tip'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Connected to ${device.name}.',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Your phone is advertising AVRCP ${device.avrcpVersionString}. '
+              'If your car stereo isn\'t responding to Musly — or skipping '
+              'is slow — try lowering this to 1.4 in:',
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Developer Options → Bluetooth AVRCP Version',
+              style: TextStyle(fontStyle: FontStyle.italic),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setBool('bluetooth_avrcp_hint_dismissed', true);
+            },
+            child: const Text("Don't show again"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Got it'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _startUsageTimeChecker() {

@@ -289,6 +289,16 @@ class BluetoothAvrcpService {
     }
   }
 
+  Future<String> getSystemAvrcpVersion() async {
+    if (defaultTargetPlatform != TargetPlatform.android) return 'unknown';
+    try {
+      final result = await _methodChannel.invokeMethod<String>('getSystemAvrcpVersion');
+      return result ?? 'unknown';
+    } catch (e) {
+      return 'unknown';
+    }
+  }
+
   Future<bool> registerAbsoluteVolumeControl() async {
     if (defaultTargetPlatform != TargetPlatform.android) return false;
 
