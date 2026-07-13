@@ -47,6 +47,7 @@ class UpnpService extends ChangeNotifier {
   UpnpDevice? _connectedDevice;
   bool _isDiscovering = false;
   Timer? _pollTimer;
+  Timer? _idleDisconnectTimer;
 
   Duration _rendererPosition = Duration.zero;
   Duration _rendererDuration = Duration.zero;
@@ -73,6 +74,7 @@ class UpnpService extends ChangeNotifier {
   static const int _ssdpPort = 1900;
   static const Duration _discoveryTimeout = Duration(seconds: 4);
   static const Duration _discoveryProbeInterval = Duration(milliseconds: 700);
+  static const Duration _idleDisconnectDelay = Duration(minutes: 5);
   static const List<String> _searchTargets = [
     'urn:schemas-upnp-org:device:MediaRenderer:1',
     'urn:schemas-upnp-org:service:AVTransport:1',
@@ -272,6 +274,7 @@ class UpnpService extends ChangeNotifier {
         _volume = await getVolume();
       }
       _consecutivePollErrors = 0;
+      _cancelIdleDisconnectTimer();
       _startPolling();
       notifyListeners();
       return true;
@@ -285,6 +288,7 @@ class UpnpService extends ChangeNotifier {
     final device = _connectedDevice;
     debugPrint('UPnP: Disconnecting from ${device?.friendlyName}');
     _stopPolling();
+    _cancelIdleDisconnectTimer();
     _connectedDevice = null;
     _rendererState = 'STOPPED';
     _rendererPosition = Duration.zero;
@@ -311,6 +315,55 @@ class UpnpService extends ChangeNotifier {
   void _stopPolling() {
     _pollTimer?.cancel();
     _pollTimer = null;
+  }
+
+  void _cancelIdleDisconnectTimer() {
+    _idleDisconnectTimer?.cancel();
+    _idleDisconnectTimer = null;
+  }
+
+  bool _isIdleRendererState(String state) {
+    switch (state) {
+      case 'STOPPED':
+      case 'NO_MEDIA_PRESENT':
+      case 'PAUSED_PLAYBACK':
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  void _updateIdleDisconnectTimer(String state) {
+    if (_connectedDevice == null) {
+      _cancelIdleDisconnectTimer();
+      return;
+    }
+
+    if (!_isIdleRendererState(state)) {
+      _cancelIdleDisconnectTimer();
+      return;
+    }
+
+    if (_idleDisconnectTimer != null) return;
+    debugPrint(
+      'UPnP: Renderer idle ($state), will disconnect in '
+      '${_idleDisconnectDelay.inMinutes} min if it stays idle',
+    );
+    _idleDisconnectTimer = Timer(_idleDisconnectDelay, () {
+      _idleDisconnectTimer = null;
+      _disconnectIdleRenderer();
+    });
+  }
+
+  Future<void> _disconnectIdleRenderer() async {
+    final device = _connectedDevice;
+    if (device == null || !_isIdleRendererState(_rendererState)) return;
+
+    debugPrint(
+      'UPnP: Renderer stayed idle for '
+      '${_idleDisconnectDelay.inMinutes} min — disconnecting cleanly',
+    );
+    await disconnect();
   }
 
   bool _isPolling = false;
@@ -342,7 +395,7 @@ class UpnpService extends ChangeNotifier {
         if (_consecutivePollErrors >= 30) {
           debugPrint(
               'UPnP: 30 consecutive poll failures — auto-disconnecting renderer');
-          disconnect();
+          await disconnect();
           onRendererLost?.call();
         }
         return;
@@ -358,6 +411,7 @@ class UpnpService extends ChangeNotifier {
         _rendererState = state.transportState;
         changed = true;
       }
+      _updateIdleDisconnectTimer(state.transportState);
       if (state.position != _rendererPosition) {
         _rendererPosition = state.position;
         changed = true;
@@ -385,7 +439,7 @@ class UpnpService extends ChangeNotifier {
       if (_consecutivePollErrors >= 30) {
         debugPrint(
             'UPnP: 30 consecutive poll failures — auto-disconnecting renderer');
-        disconnect();
+        await disconnect();
         onRendererLost?.call();
       }
     } finally {
@@ -439,6 +493,7 @@ class UpnpService extends ChangeNotifier {
       debugPrint('UPnP: loadAndPlay called but no device connected');
       return false;
     }
+    _cancelIdleDisconnectTimer();
 
     debugPrint('UPnP: loadAndPlay → ${device.friendlyName}');
     debugPrint('UPnP:   URL: $url');
@@ -528,6 +583,7 @@ class UpnpService extends ChangeNotifier {
   Future<void> play() async {
     final device = _connectedDevice;
     if (device == null) return;
+    _cancelIdleDisconnectTimer();
     try {
       await _soap(device.avTransportUrl, 'Play', '<Speed>1</Speed>');
     } catch (e) {
@@ -851,6 +907,7 @@ class UpnpService extends ChangeNotifier {
   @override
   void dispose() {
     _stopPolling();
+    _cancelIdleDisconnectTimer();
     _dio.close();
     super.dispose();
   }

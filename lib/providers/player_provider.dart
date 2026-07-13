@@ -1565,13 +1565,13 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
             contentType: mimeType,
           );
           if (!success) {
-            _upnpService.disconnect();
+            await _upnpService.disconnect();
             debugPrint(
                 'UPnP playback failed (retries exhausted), disconnected');
             return;
           }
         } catch (e) {
-          _upnpService.disconnect();
+          await _upnpService.disconnect();
           debugPrint('UPnP playback failed, disconnected: $e');
           rethrow;
         }
