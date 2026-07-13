@@ -399,17 +399,17 @@ class OfflineService {
   Future<void> reconcileDownloadedPlaylists(
     SubsonicService subsonicService,
   ) async {
-    if (_offlineDir == null || _prefs == null) await initialize();
     if (_isReconcilingDownloadedPlaylists) return;
-
-    final playlistIds = {
-      ...downloadedPlaylistIds.value,
-      ...queuedPlaylistIds.value,
-    };
-    if (playlistIds.isEmpty) return;
-
     _isReconcilingDownloadedPlaylists = true;
     try {
+      if (_offlineDir == null || _prefs == null) await initialize();
+
+      final playlistIds = {
+        ...downloadedPlaylistIds.value,
+        ...queuedPlaylistIds.value,
+      };
+      if (playlistIds.isEmpty) return;
+
       for (final playlistId in playlistIds) {
         if (_activePlaylistId == playlistId ||
             _downloadQueue.any((entry) => entry.playlistId == playlistId)) {
