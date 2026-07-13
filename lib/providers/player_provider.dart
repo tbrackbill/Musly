@@ -1475,6 +1475,12 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
       );
 
       if (_castService.isConnected) {
+        // Local ConcatenatingAudioSource is not used in remote-playback mode.
+        // Leaving it non-null causes _onSongComplete / skipNext to route to the
+        // local player instead of calling playSong() for the next track.
+        _concatenatingSource = null;
+        // Reset so a poll mid-load doesn't mistake the idle state for a track end.
+        _castWasPlaying = false;
         if (_audioPlayer.playing) await _audioPlayer.stop();
 
         final playUrl = song.isLocal == true
@@ -1501,6 +1507,9 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
         // Reset before sending Stop so a poll that fires mid-load can't
         // mistake the STOPPED state for a natural track end and advance twice.
         _upnpWasPlaying = false;
+        // Same as Cast: clear the local ConcatenatingAudioSource so
+        // _onSongComplete() and skipNext() route through playSong() → UPnP.
+        _concatenatingSource = null;
         debugPrint(
           'UPnP: playSong() taking UPnP branch, isConnected=${_upnpService.isConnected}',
         );
@@ -2782,14 +2791,37 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
   void _onCastStateChanged() {
     notifyListeners();
     if (_castService.isConnected) {
-      _audioPlayer.pause();
-      _androidSystemService.setRemotePlayback(isRemote: true, volume: 50);
-      if (_currentSong != null) {
-        final song = _currentSong!;
-        _currentSong = null;
-        playSong(song);
+      final isPlaying = _castService.mediaState.isPlaying;
+
+      // Detect natural track end: Cast stayed connected but stopped playing.
+      // Guard with position proximity so a mid-song pause doesn't trigger
+      // advancement.  _castWasPlaying is cleared in playSong() via
+      // _concatenatingSource = null path, so a Stop→Play for the next track
+      // won't fire this a second time.
+      if (_castWasPlaying && !isPlaying && _isRenderingRemotely) {
+        final nearEnd = _duration > Duration.zero &&
+            _position >= _duration - const Duration(seconds: 3);
+        if (nearEnd) {
+          _castWasPlaying = false;
+          _onSongComplete()
+              .catchError((e) => debugPrint('[Player] Cast _onSongComplete: $e'));
+          return;
+        }
+      }
+      _castWasPlaying = isPlaying;
+
+      if (!_isRenderingRemotely) {
+        // First connection: pause local player and start casting.
+        _audioPlayer.pause();
+        _androidSystemService.setRemotePlayback(isRemote: true, volume: 50);
+        if (_currentSong != null) {
+          final song = _currentSong!;
+          _currentSong = null;
+          playSong(song);
+        }
       }
     } else {
+      _castWasPlaying = false;
       _isRenderingRemotely = false;
       _androidSystemService.setRemotePlayback(isRemote: false);
       _isPlaying = false;
@@ -2798,6 +2830,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  bool _castWasPlaying = false;
   bool _upnpWasConnected = false;
   bool _upnpWasPlaying = false;
   // True when an A2DP audio-output device (car, speaker) is connected.
@@ -2845,12 +2878,14 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     final playing = _upnpService.isRendererPlaying;
     final rendererState = _upnpService.rendererState;
 
-    if (_upnpWasPlaying && rendererState == 'STOPPED') {
+    if (_upnpWasPlaying &&
+        (rendererState == 'STOPPED' || rendererState == 'NO_MEDIA_PRESENT')) {
       // _upnpWasPlaying is reset to false in playSong() and stop() before
       // any Stop command is sent, so this only fires for a *natural* track
       // end.  We don't check duration > 0 here because many renderers
       // (including moode/upmpdcli) return 0:00:00 from GetPositionInfo once
-      // the transport is stopped, which would cause the check to silently fail.
+      // the transport is stopped.  NO_MEDIA_PRESENT is used by some renderers
+      // (Linn DS, some Sonos firmware) instead of STOPPED at natural track end.
       debugPrint(
           'UPnP: Track ended (pos=${pos.inSeconds}s, dur=${dur.inSeconds}s) — advancing');
       _upnpWasPlaying = false;
