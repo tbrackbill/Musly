@@ -1189,9 +1189,9 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
       notifyListeners();
     });
 
-    // Resume any playlists that were queued for download but interrupted
-    _offlineService.initialize().then((_) {
-      _offlineService.resumeIncompleteDownloads(_subsonicService);
+    // AuthProvider runs server-backed playlist reconciliation after connection.
+    _offlineService.initialize().catchError((e) {
+      debugPrint('Failed to initialize offline service: $e');
     });
 
     _storageService.getRepeatMode().then((saved) {

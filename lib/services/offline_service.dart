@@ -94,6 +94,7 @@ class OfflineService {
   static const int _defaultParallelDownloads = 3;
   static const int _maxParallelDownloads = 5;
   static const int _offlineCoverArtSize = 1200;
+  static const Duration _playlistReconciliationLockTtl = Duration(minutes: 2);
 
   Map<String, int> _expectedSizes = {};
 
@@ -376,6 +377,42 @@ class OfflineService {
     return '$_offlineDir/art_${_sanitizeFileId(coverArtId)}$suffix.jpg';
   }
 
+  String _getPlaylistReconciliationLockPath() {
+    return '$_offlineDir/.playlist_reconcile.lock';
+  }
+
+  Future<File?> _acquirePlaylistReconciliationLock() async {
+    final lockFile = File(_getPlaylistReconciliationLockPath());
+    final now = DateTime.now().toUtc();
+
+    try {
+      if (await lockFile.exists()) {
+        final stat = await lockFile.stat();
+        final isStale = now.difference(stat.modified.toUtc()) >
+            _playlistReconciliationLockTtl;
+        if (isStale) {
+          await lockFile.delete();
+        } else {
+          return null;
+        }
+      }
+
+      await lockFile.create(exclusive: true);
+      await lockFile.writeAsString('${now.toIso8601String()}\n');
+      return lockFile;
+    } on FileSystemException {
+      return null;
+    }
+  }
+
+  Future<void> _releasePlaylistReconciliationLock(File lockFile) async {
+    try {
+      if (await lockFile.exists()) {
+        await lockFile.delete();
+      }
+    } catch (_) {}
+  }
+
   String? getLocalCoverArtPath(String songId) {
     if (_offlineDir == null) return null;
     final path = _getCoverArtPath(songId);
@@ -401,8 +438,14 @@ class OfflineService {
   ) async {
     if (_isReconcilingDownloadedPlaylists) return;
     _isReconcilingDownloadedPlaylists = true;
+    File? lockFile;
     try {
       if (_offlineDir == null || _prefs == null) await initialize();
+      lockFile = await _acquirePlaylistReconciliationLock();
+      if (lockFile == null) {
+        debugPrint('Downloaded playlist reconciliation already running');
+        return;
+      }
 
       final playlistIds = {
         ...downloadedPlaylistIds.value,
@@ -456,6 +499,9 @@ class OfflineService {
         }
       }
     } finally {
+      if (lockFile != null) {
+        await _releasePlaylistReconciliationLock(lockFile);
+      }
       _isReconcilingDownloadedPlaylists = false;
     }
   }
