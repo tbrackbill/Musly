@@ -22,6 +22,7 @@ import 'artist_screen.dart';
 import 'radio_screen.dart';
 import 'all_songs_screen.dart';
 import '../l10n/app_localizations.dart';
+import '../services/offline_service.dart';
 import '../widgets/album_artwork.dart' show isLocalFilePath;
 
 class LibraryScreen extends StatefulWidget {
@@ -478,6 +479,30 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 ],
               ),
             ),
+            if (item.type == 'Playlist')
+              ValueListenableBuilder<Set<String>>(
+                valueListenable: OfflineService().downloadedPlaylistIds,
+                builder: (context, downloaded, _) {
+                  return ValueListenableBuilder<Set<String>>(
+                    valueListenable: OfflineService().queuedPlaylistIds,
+                    builder: (context, queued, _) {
+                      if (downloaded.contains(item.id)) {
+                        return const Padding(
+                          padding: EdgeInsets.only(left: 8),
+                          child: Icon(Icons.check_circle, color: Colors.green, size: 18),
+                        );
+                      }
+                      if (queued.contains(item.id)) {
+                        return const Padding(
+                          padding: EdgeInsets.only(left: 8),
+                          child: Icon(Icons.check_circle_outline, color: Colors.green, size: 18),
+                        );
+                      }
+                      return const SizedBox.shrink();
+                    },
+                  );
+                },
+              ),
           ],
         ),
       ),
@@ -620,6 +645,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 context,
                 listen: false,
               );
+              try {
+                await OfflineService().cancelPlaylistDownload(item.id);
+              } catch (_) {}
               try {
                 await libraryProvider.deletePlaylist(item.id);
                 if (context.mounted) {
