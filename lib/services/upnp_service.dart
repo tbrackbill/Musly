@@ -1,4 +1,3 @@
-
 library;
 
 import 'dart:async';
@@ -8,11 +7,11 @@ import 'package:flutter/foundation.dart';
 
 class UpnpDevice {
   final String friendlyName;
-  final String location; 
+  final String location;
   final String manufacturer;
   final String modelName;
-  final String avTransportUrl; 
-  final String? renderingControlUrl; 
+  final String avTransportUrl;
+  final String? renderingControlUrl;
 
   const UpnpDevice({
     required this.friendlyName,
@@ -28,7 +27,7 @@ class UpnpDevice {
 }
 
 class UpnpPlaybackState {
-  final String transportState; 
+  final String transportState;
   final Duration position;
   final Duration duration;
 
@@ -52,7 +51,7 @@ class UpnpService extends ChangeNotifier {
   Duration _rendererPosition = Duration.zero;
   Duration _rendererDuration = Duration.zero;
   String _rendererState = 'STOPPED';
-  int _volume = -1; 
+  int _volume = -1;
 
   Duration get rendererPosition => _rendererPosition;
   Duration get rendererDuration => _rendererDuration;
@@ -73,6 +72,13 @@ class UpnpService extends ChangeNotifier {
   static const String _ssdpAddress = '239.255.255.250';
   static const int _ssdpPort = 1900;
   static const Duration _discoveryTimeout = Duration(seconds: 4);
+  static const Duration _discoveryProbeInterval = Duration(milliseconds: 700);
+  static const List<String> _searchTargets = [
+    'urn:schemas-upnp-org:device:MediaRenderer:1',
+    'urn:schemas-upnp-org:service:AVTransport:1',
+    'urn:schemas-upnp-org:service:RenderingControl:1',
+    'ssdp:all',
+  ];
 
   final _dio = Dio(
     BaseOptions(
@@ -91,38 +97,47 @@ class UpnpService extends ChangeNotifier {
   Future<List<UpnpDevice>> discover() async {
     if (_isDiscovering) return _devices;
     _isDiscovering = true;
-    _devices.clear();
     notifyListeners();
 
     try {
       final seen = <String>{};
       final socket = await RawDatagramSocket.bind(
         InternetAddress.anyIPv4,
-        0, 
+        0,
         reuseAddress: true,
       );
 
       socket.joinMulticast(InternetAddress(_ssdpAddress));
       socket.broadcastEnabled = true;
 
-      const mSearch =
-          'M-SEARCH * HTTP/1.1\r\n'
-          'HOST: 239.255.255.250:1900\r\n'
-          'MAN: "ssdp:discover"\r\n'
-          'MX: 3\r\n'
-          
-          'ST: urn:schemas-upnp-org:device:MediaRenderer:1\r\n'
-          '\r\n';
+      void sendSearches() {
+        for (final target in _searchTargets) {
+          final mSearch = 'M-SEARCH * HTTP/1.1\r\n'
+              'HOST: 239.255.255.250:1900\r\n'
+              'MAN: "ssdp:discover"\r\n'
+              'MX: 2\r\n'
+              'ST: $target\r\n'
+              '\r\n';
+          socket.send(
+            mSearch.codeUnits,
+            InternetAddress(_ssdpAddress),
+            _ssdpPort,
+          );
+        }
+      }
 
-      final packet = mSearch.codeUnits;
-      socket.send(packet, InternetAddress(_ssdpAddress), _ssdpPort);
+      sendSearches();
+      final probeTimer = Timer.periodic(
+        _discoveryProbeInterval,
+        (_) => sendSearches(),
+      );
 
       final completer = Completer<void>();
       final timer = Timer(_discoveryTimeout, () {
         if (!completer.isCompleted) completer.complete();
       });
 
-      socket.listen((event) async {
+      final subscription = socket.listen((event) async {
         if (event != RawSocketEvent.read) return;
         final dg = socket.receive();
         if (dg == null) return;
@@ -135,7 +150,7 @@ class UpnpService extends ChangeNotifier {
         try {
           final device = await _fetchDeviceDescription(location);
           if (device != null) {
-            _devices.add(device);
+            _upsertDevice(device);
             notifyListeners();
             debugPrint('UPnP: Found ${device.friendlyName}');
           }
@@ -146,6 +161,8 @@ class UpnpService extends ChangeNotifier {
 
       await completer.future;
       timer.cancel();
+      probeTimer.cancel();
+      await subscription.cancel();
       socket.close();
     } catch (e) {
       debugPrint('UPnP: Discovery error: $e');
@@ -155,6 +172,15 @@ class UpnpService extends ChangeNotifier {
     }
 
     return _devices;
+  }
+
+  void _upsertDevice(UpnpDevice device) {
+    final index = _devices.indexWhere((d) => d.location == device.location);
+    if (index == -1) {
+      _devices.add(device);
+    } else {
+      _devices[index] = device;
+    }
   }
 
   static String? _headerValue(String response, String header) {
@@ -197,7 +223,6 @@ class UpnpService extends ChangeNotifier {
   }
 
   static String? _extractAvTransportUrl(String xml, String location) {
-    
     final servicePattern = RegExp(
       r'<service>(.*?)</service>',
       dotAll: true,
@@ -239,7 +264,6 @@ class UpnpService extends ChangeNotifier {
 
   Future<bool> connect(UpnpDevice device) async {
     try {
-
       await _soap(device.avTransportUrl, 'GetTransportInfo', '');
       _connectedDevice = device;
       debugPrint('UPnP: Connected to ${device.friendlyName}');
@@ -257,7 +281,7 @@ class UpnpService extends ChangeNotifier {
     }
   }
 
-  void disconnect() {
+  Future<void> disconnect() async {
     final device = _connectedDevice;
     debugPrint('UPnP: Disconnecting from ${device?.friendlyName}');
     _stopPolling();
@@ -270,11 +294,12 @@ class UpnpService extends ChangeNotifier {
     notifyListeners();
 
     if (device != null) {
-      _soap(device.avTransportUrl, 'Stop', '').then((_) {
+      try {
+        await _soap(device.avTransportUrl, 'Stop', '');
         debugPrint('UPnP: Stop sent on disconnect');
-      }).catchError((e) {
+      } catch (e) {
         debugPrint('UPnP: Stop on disconnect failed (ok): $e');
-      });
+      }
     }
   }
 
@@ -315,7 +340,8 @@ class UpnpService extends ChangeNotifier {
         // Network hiccups and AP roaming typically resolve within 10–15 s,
         // so 30 s gives enough headroom without leaving the user stuck.
         if (_consecutivePollErrors >= 30) {
-          debugPrint('UPnP: 30 consecutive poll failures — auto-disconnecting renderer');
+          debugPrint(
+              'UPnP: 30 consecutive poll failures — auto-disconnecting renderer');
           disconnect();
           onRendererLost?.call();
         }
@@ -357,7 +383,8 @@ class UpnpService extends ChangeNotifier {
       notifyListeners();
       debugPrint('UPnP: poll error: $e');
       if (_consecutivePollErrors >= 30) {
-        debugPrint('UPnP: 30 consecutive poll failures — auto-disconnecting renderer');
+        debugPrint(
+            'UPnP: 30 consecutive poll failures — auto-disconnecting renderer');
         disconnect();
         onRendererLost?.call();
       }
@@ -371,7 +398,6 @@ class UpnpService extends ChangeNotifier {
     if (device == null) return null;
 
     try {
-      
       final transportXml = await _soapQuery(
         device.avTransportUrl,
         'GetTransportInfo',
@@ -471,13 +497,12 @@ class UpnpService extends ChangeNotifier {
               : const Duration(milliseconds: 2400);
           continue;
         }
-      } catch (_) {
-        
-      }
+      } catch (_) {}
 
       try {
         await _soap(device.avTransportUrl, 'Play', '<Speed>1</Speed>');
-        debugPrint('UPnP: Playing "$title" on ${device.friendlyName} (attempt $attempt)');
+        debugPrint(
+            'UPnP: Playing "$title" on ${device.friendlyName} (attempt $attempt)');
         return true;
       } catch (e) {
         debugPrint('UPnP: Play attempt $attempt/$maxAttempts failed: $e');
@@ -537,8 +562,7 @@ class UpnpService extends ChangeNotifier {
 
   Future<void> _soap(String controlUrl, String action, String body) async {
     const serviceType = 'urn:schemas-upnp-org:service:AVTransport:1';
-    final envelope =
-        '<?xml version="1.0" encoding="utf-8"?>\n'
+    final envelope = '<?xml version="1.0" encoding="utf-8"?>\n'
         '<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"'
         ' s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n'
         '  <s:Body>\n'
@@ -559,7 +583,7 @@ class UpnpService extends ChangeNotifier {
           'Content-Type': 'text/xml; charset="utf-8"',
           'SOAPAction': '"$serviceType#$action"',
         },
-        validateStatus: (_) => true, 
+        validateStatus: (_) => true,
         responseType: ResponseType.plain,
       ),
     );
@@ -570,7 +594,6 @@ class UpnpService extends ChangeNotifier {
       'UPnP SOAP ← $action HTTP $status | ${responseBody.length} bytes',
     );
     if (responseBody.isNotEmpty) {
-      
       debugPrint(
         'UPnP SOAP body: ${responseBody.substring(0, responseBody.length.clamp(0, 600))}',
       );
@@ -584,9 +607,7 @@ class UpnpService extends ChangeNotifier {
     if (lowerBody.contains('<s:fault>') ||
         lowerBody.contains('<soap:fault>') ||
         lowerBody.contains('<fault>')) {
-      
-      final code =
-          RegExp(
+      final code = RegExp(
             r'<errorCode>([^<]*)</errorCode>',
             caseSensitive: false,
           ).firstMatch(responseBody)?.group(1) ??
@@ -594,8 +615,7 @@ class UpnpService extends ChangeNotifier {
             r'<faultcode>([^<]*)</faultcode>',
             caseSensitive: false,
           ).firstMatch(responseBody)?.group(1);
-      final desc =
-          RegExp(
+      final desc = RegExp(
             r'<errorDescription>([^<]*)</errorDescription>',
             caseSensitive: false,
           ).firstMatch(responseBody)?.group(1) ??
@@ -613,8 +633,7 @@ class UpnpService extends ChangeNotifier {
     String body,
   ) async {
     const serviceType = 'urn:schemas-upnp-org:service:AVTransport:1';
-    final envelope =
-        '<?xml version="1.0" encoding="utf-8"?>\n'
+    final envelope = '<?xml version="1.0" encoding="utf-8"?>\n'
         '<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"'
         ' s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n'
         '  <s:Body>\n'
@@ -658,8 +677,7 @@ class UpnpService extends ChangeNotifier {
       throw Exception('No RenderingControl URL');
     }
     const serviceType = 'urn:schemas-upnp-org:service:RenderingControl:1';
-    final envelope =
-        '<?xml version="1.0" encoding="utf-8"?>\n'
+    final envelope = '<?xml version="1.0" encoding="utf-8"?>\n'
         '<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"'
         ' s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\n'
         '  <s:Body>\n'
@@ -783,8 +801,7 @@ class UpnpService extends ChangeNotifier {
         ? '<upnp:albumArtURI>${esc(albumArtUrl)}</upnp:albumArtURI>'
         : '';
 
-    final didl =
-        '<DIDL-Lite '
+    final didl = '<DIDL-Lite '
         'xmlns:dc="http://purl.org/dc/elements/1.1/" '
         'xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" '
         'xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/">'

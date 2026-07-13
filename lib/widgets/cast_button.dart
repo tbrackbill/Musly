@@ -17,7 +17,6 @@ class CastButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-
     if (Platform.isIOS) {
       return AirPlayButton(
         tintColor: iconColor ?? Colors.white,
@@ -65,7 +64,7 @@ class CastButton extends StatelessWidget {
         if (castService.isConnected) {
           _showCastControlDialog(context, castService);
         } else if (upnpService.isConnected) {
-          _showUpnpControlDialog(context, upnpService);
+          _showDevicePickerDialog(context, castService, upnpService);
         } else {
           _showDevicePickerDialog(context, castService, upnpService);
         }
@@ -86,7 +85,8 @@ class CastButton extends StatelessWidget {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [
-            Icon(Icons.cast_connected, color: Theme.of(context).colorScheme.primary, size: 28),
+            Icon(Icons.cast_connected,
+                color: Theme.of(context).colorScheme.primary, size: 28),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -185,8 +185,8 @@ class CastButton extends StatelessWidget {
                     cs.mediaState.volume == 0
                         ? Icons.volume_off
                         : cs.mediaState.volume < 0.5
-                        ? Icons.volume_down
-                        : Icons.volume_up,
+                            ? Icons.volume_down
+                            : Icons.volume_up,
                     color: Theme.of(context).colorScheme.primary,
                   ),
                   Expanded(
@@ -231,171 +231,6 @@ class CastButton extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-
-  Future<void> _showUpnpControlDialog(
-    BuildContext context,
-    UpnpService upnpService,
-  ) async {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final device = upnpService.connectedDevice;
-
-    await showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: isDark ? AppTheme.darkSurface : Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            Icon(
-              Icons.speaker_rounded,
-              color: Theme.of(context).colorScheme.primary,
-              size: 28,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    AppLocalizations.of(context)!.dlna,
-                    style: const TextStyle(fontSize: 18),
-                  ),
-                  Text(
-                    device?.friendlyName ?? 'Unknown Device',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.normal,
-                      color: isDark
-                          ? AppTheme.darkSecondaryText
-                          : AppTheme.lightSecondaryText,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (device != null) ...[
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: (isDark ? Colors.white : Colors.black).withValues(
-                    alpha: 0.05,
-                  ),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _infoRow(Icons.devices, device.manufacturer, isDark),
-                    if (device.modelName.isNotEmpty) ...[
-                      const SizedBox(height: 6),
-                      _infoRow(Icons.info_outline, device.modelName, isDark),
-                    ],
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
-            Consumer<UpnpService>(
-              builder: (context, us, _) {
-                if (us.volume < 0) {
-                  return Text(
-                    'Playback is being sent to this DLNA device. '
-                    'Use Musly\'s player controls to manage playback.',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: isDark
-                          ? AppTheme.darkSecondaryText
-                          : AppTheme.lightSecondaryText,
-                    ),
-                    textAlign: TextAlign.center,
-                  );
-                }
-                return Row(
-                  children: [
-                    Icon(
-                      us.volume == 0
-                          ? Icons.volume_off
-                          : us.volume < 50
-                          ? Icons.volume_down
-                          : Icons.volume_up,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                    Expanded(
-                      child: Slider(
-                        value: (us.volume / 100.0).clamp(0.0, 1.0),
-                        onChanged: (v) => us.setVolume((v * 100).round()),
-                        activeColor: Theme.of(context).colorScheme.primary,
-                      ),
-                    ),
-                    Text(
-                      '${us.volume}%',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: isDark
-                            ? AppTheme.darkSecondaryText
-                            : AppTheme.lightSecondaryText,
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
-          ],
-        ),
-        actions: [
-          TextButton.icon(
-            onPressed: () {
-              Navigator.pop(context);
-              upnpService.disconnect();
-            },
-            icon: const Icon(
-              Icons.stop_circle_outlined,
-              color: Color(0xFFFF3B30),
-            ),
-            label: const Text(
-              'Disconnect',
-              style: TextStyle(color: Color(0xFFFF3B30)),
-            ),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(AppLocalizations.of(context)!.close),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _infoRow(IconData icon, String text, bool isDark) {
-    return Row(
-      children: [
-        Icon(
-          icon,
-          size: 16,
-          color: isDark
-              ? AppTheme.darkSecondaryText
-              : AppTheme.lightSecondaryText,
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            text,
-            style: TextStyle(
-              fontSize: 13,
-              color: isDark
-                  ? AppTheme.darkSecondaryText
-                  : AppTheme.lightSecondaryText,
-            ),
-          ),
-        ),
-      ],
     );
   }
 
@@ -451,14 +286,26 @@ class _DevicePickerDialogState extends State<_DevicePickerDialog> {
   @override
   void initState() {
     super.initState();
+    _upnpDevices = List.of(widget.upnpService.devices);
     _pollTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
       if (mounted) {
         final devices = widget.upnpService.devices;
-        if (devices.length != _upnpDevices.length) {
+        if (!_sameUpnpDeviceList(devices, _upnpDevices)) {
           setState(() => _upnpDevices = List.of(devices));
         }
       }
     });
+  }
+
+  bool _sameUpnpDeviceList(List<UpnpDevice> a, List<UpnpDevice> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].location != b[i].location ||
+          a[i].friendlyName != b[i].friendlyName) {
+        return false;
+      }
+    }
+    return true;
   }
 
   @override
@@ -476,7 +323,8 @@ class _DevicePickerDialogState extends State<_DevicePickerDialog> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       title: Row(
         children: [
-          Icon(Icons.cast, color: Theme.of(context).colorScheme.primary, size: 28),
+          Icon(Icons.cast,
+              color: Theme.of(context).colorScheme.primary, size: 28),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
@@ -505,8 +353,13 @@ class _DevicePickerDialogState extends State<_DevicePickerDialog> {
           stream: widget.discoveryManager.devicesStream,
           builder: (context, snapshot) {
             final castDevices = snapshot.data ?? [];
+            final activeUpnpDevice = widget.upnpService.connectedDevice;
+            final otherUpnpDevices = _upnpDevices
+                .where((d) => d.location != activeUpnpDevice?.location)
+                .toList();
             final hasCast = castDevices.isNotEmpty;
-            final hasUpnp = _upnpDevices.isNotEmpty;
+            final hasUpnp =
+                activeUpnpDevice != null || otherUpnpDevices.isNotEmpty;
 
             if (!hasCast && !hasUpnp) {
               return Center(
@@ -544,6 +397,17 @@ class _DevicePickerDialogState extends State<_DevicePickerDialog> {
 
             return ListView(
               children: [
+                if (activeUpnpDevice != null) ...[
+                  _SectionHeader(label: 'Connected DLNA', isDark: isDark),
+                  _ActiveDlnaTile(
+                    device: activeUpnpDevice,
+                    isDark: isDark,
+                    onDisconnect: () async {
+                      Navigator.pop(context);
+                      await widget.upnpService.disconnect();
+                    },
+                  ),
+                ],
                 if (hasCast) ...[
                   _SectionHeader(
                     label: AppLocalizations.of(context)!.chromecast,
@@ -563,8 +427,10 @@ class _DevicePickerDialogState extends State<_DevicePickerDialog> {
                             SnackBar(
                               content: Text(
                                 ok
-                                    ? AppLocalizations.of(context)!.connectedToDevice(d.friendlyName)
-                                    : AppLocalizations.of(context)!.failedToConnectDevice(d.friendlyName),
+                                    ? AppLocalizations.of(context)!
+                                        .connectedToDevice(d.friendlyName)
+                                    : AppLocalizations.of(context)!
+                                        .failedToConnectDevice(d.friendlyName),
                               ),
                               backgroundColor: ok ? null : Colors.red,
                               duration: const Duration(seconds: 2),
@@ -575,12 +441,14 @@ class _DevicePickerDialogState extends State<_DevicePickerDialog> {
                     ),
                   ),
                 ],
-                if (hasUpnp) ...[
+                if (otherUpnpDevices.isNotEmpty) ...[
                   _SectionHeader(
-                    label: AppLocalizations.of(context)!.dlnaUpnp,
+                    label: activeUpnpDevice == null
+                        ? AppLocalizations.of(context)!.dlnaUpnp
+                        : 'Other DLNA renderers',
                     isDark: isDark,
                   ),
-                  ..._upnpDevices.map(
+                  ...otherUpnpDevices.map(
                     (d) => _DeviceTile(
                       icon: Icons.speaker_rounded,
                       name: d.friendlyName,
@@ -590,14 +458,19 @@ class _DevicePickerDialogState extends State<_DevicePickerDialog> {
                       isDark: isDark,
                       onTap: () async {
                         Navigator.pop(context);
+                        if (widget.upnpService.isConnected) {
+                          await widget.upnpService.disconnect();
+                        }
                         final ok = await widget.upnpService.connect(d);
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               content: Text(
                                 ok
-                                    ? AppLocalizations.of(context)!.connectedToDevice(d.friendlyName)
-                                    : AppLocalizations.of(context)!.failedToConnectDevice(d.friendlyName),
+                                    ? AppLocalizations.of(context)!
+                                        .connectedToDevice(d.friendlyName)
+                                    : AppLocalizations.of(context)!
+                                        .failedToConnectDevice(d.friendlyName),
                               ),
                               backgroundColor: ok ? null : Colors.red,
                               duration: const Duration(seconds: 3),
@@ -623,6 +496,121 @@ class _DevicePickerDialogState extends State<_DevicePickerDialog> {
   }
 }
 
+class _ActiveDlnaTile extends StatelessWidget {
+  final UpnpDevice device;
+  final bool isDark;
+  final Future<void> Function() onDisconnect;
+
+  const _ActiveDlnaTile({
+    required this.device,
+    required this.isDark,
+    required this.onDisconnect,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final subtitle = [device.manufacturer, device.modelName]
+        .where((s) => s.isNotEmpty)
+        .join('  ');
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.speaker_rounded,
+                color: Theme.of(context).colorScheme.primary,
+                size: 28,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      device.friendlyName,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    if (subtitle.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: isDark
+                              ? AppTheme.darkSecondaryText
+                              : AppTheme.lightSecondaryText,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: AppLocalizations.of(context)!.disconnect,
+                icon: const Icon(
+                  Icons.stop_circle_outlined,
+                  color: Color(0xFFFF3B30),
+                ),
+                onPressed: () {
+                  onDisconnect();
+                },
+              ),
+            ],
+          ),
+          Consumer<UpnpService>(
+            builder: (context, upnp, _) {
+              if (upnp.volume < 0) return const SizedBox.shrink();
+              return Row(
+                children: [
+                  Icon(
+                    upnp.volume == 0
+                        ? Icons.volume_off
+                        : upnp.volume < 50
+                            ? Icons.volume_down
+                            : Icons.volume_up,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  Expanded(
+                    child: Slider(
+                      value: (upnp.volume / 100.0).clamp(0.0, 1.0),
+                      onChanged: (v) => upnp.setVolume((v * 100).round()),
+                      activeColor: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  Text(
+                    '${upnp.volume}%',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: isDark
+                          ? AppTheme.darkSecondaryText
+                          : AppTheme.lightSecondaryText,
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _SectionHeader extends StatelessWidget {
   final String label;
   final bool isDark;
@@ -638,9 +626,8 @@ class _SectionHeader extends StatelessWidget {
           fontSize: 11,
           fontWeight: FontWeight.w600,
           letterSpacing: 0.8,
-          color: isDark
-              ? AppTheme.darkSecondaryText
-              : AppTheme.lightSecondaryText,
+          color:
+              isDark ? AppTheme.darkSecondaryText : AppTheme.lightSecondaryText,
         ),
       ),
     );
@@ -673,7 +660,8 @@ class _DeviceTile extends StatelessWidget {
           color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(12),
         ),
-        child: Icon(icon, color: Theme.of(context).colorScheme.primary, size: 26),
+        child:
+            Icon(icon, color: Theme.of(context).colorScheme.primary, size: 26),
       ),
       title: Text(
         name,
