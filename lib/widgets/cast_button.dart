@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_chrome_cast/flutter_chrome_cast.dart';
 import 'package:provider/provider.dart';
 import '../l10n/app_localizations.dart';
+import '../providers/player_provider.dart';
 import '../services/cast_service.dart';
 import '../services/upnp_service.dart';
 import '../theme/app_theme.dart';
@@ -212,6 +213,16 @@ class CastButton extends StatelessWidget {
         ),
         actions: [
           TextButton.icon(
+            onPressed: () async {
+              final playerProvider = context.read<PlayerProvider>();
+              Navigator.pop(context);
+              await castService.disconnect();
+              await playerProvider.play();
+            },
+            icon: const Icon(Icons.phone_android_rounded),
+            label: const Text('Play on this phone'),
+          ),
+          TextButton.icon(
             onPressed: () {
               Navigator.pop(context);
               castService.disconnect();
@@ -402,6 +413,12 @@ class _DevicePickerDialogState extends State<_DevicePickerDialog> {
                   _ActiveDlnaTile(
                     device: activeUpnpDevice,
                     isDark: isDark,
+                    onPlayOnPhone: () async {
+                      final playerProvider = context.read<PlayerProvider>();
+                      Navigator.pop(context);
+                      await widget.upnpService.disconnect();
+                      await playerProvider.play();
+                    },
                     onDisconnect: () async {
                       Navigator.pop(context);
                       await widget.upnpService.disconnect();
@@ -499,11 +516,13 @@ class _DevicePickerDialogState extends State<_DevicePickerDialog> {
 class _ActiveDlnaTile extends StatelessWidget {
   final UpnpDevice device;
   final bool isDark;
+  final Future<void> Function() onPlayOnPhone;
   final Future<void> Function() onDisconnect;
 
   const _ActiveDlnaTile({
     required this.device,
     required this.isDark,
+    required this.onPlayOnPhone,
     required this.onDisconnect,
   });
 
@@ -604,6 +623,17 @@ class _ActiveDlnaTile extends StatelessWidget {
                 ],
               );
             },
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: () {
+                onPlayOnPhone();
+              },
+              icon: const Icon(Icons.phone_android_rounded),
+              label: const Text('Play on this phone'),
+            ),
           ),
         ],
       ),

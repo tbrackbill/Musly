@@ -147,6 +147,7 @@ class UpnpService extends ChangeNotifier {
         final response = String.fromCharCodes(dg.data);
         final location = _headerValue(response, 'LOCATION');
         if (location == null || seen.contains(location)) return;
+        if (!_isRendererDiscoveryResponse(response)) return;
         seen.add(location);
 
         try {
@@ -183,6 +184,16 @@ class UpnpService extends ChangeNotifier {
     } else {
       _devices[index] = device;
     }
+  }
+
+  static bool _isRendererDiscoveryResponse(String response) {
+    final searchTarget = _headerValue(response, 'ST') ?? '';
+    final uniqueServiceName = _headerValue(response, 'USN') ?? '';
+    final target = '$searchTarget $uniqueServiceName'.toLowerCase();
+
+    return target.contains('mediarenderer') ||
+        target.contains('avtransport') ||
+        target.contains('renderingcontrol');
   }
 
   static String? _headerValue(String response, String header) {
