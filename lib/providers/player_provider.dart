@@ -3,7 +3,7 @@ import 'package:flutter/widgets.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math' show Random;
+import 'dart:math' show Random, min;
 
 import 'package:audio_session/audio_session.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
@@ -2110,12 +2110,8 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
 
     if (_concatenatingSource != null && !_isRenderingRemotely) {
       if (_shuffleEnabled && _queue.length > 1) {
-        _shuffleHistory.add(_currentSong!.id);
-        if (_shuffleHistory.length > 50) _shuffleHistory.removeAt(0);
-        int next;
-        do {
-          next = Random().nextInt(_queue.length);
-        } while (next == _currentIndex);
+        _rememberShuffleHistory(_currentSong);
+        final next = _selectShuffleNextIndex();
         await _audioPlayer.seek(Duration.zero, index: next);
       } else if (_currentIndex < _queue.length - 1) {
         await _audioPlayer.seek(Duration.zero, index: _currentIndex + 1);
@@ -2126,12 +2122,8 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     }
 
     if (_shuffleEnabled && _queue.length > 1) {
-      _shuffleHistory.add(_currentSong!.id);
-      if (_shuffleHistory.length > 50) _shuffleHistory.removeAt(0);
-      int next;
-      do {
-        next = Random().nextInt(_queue.length);
-      } while (next == _currentIndex);
+      _rememberShuffleHistory(_currentSong);
+      final next = _selectShuffleNextIndex();
       await skipToIndex(next);
     } else if (_currentIndex < _queue.length - 1) {
       await skipToIndex(_currentIndex + 1);
@@ -2143,6 +2135,42 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
         await skipToIndex(0);
       }
     }
+  }
+
+  void _rememberShuffleHistory(Song? song) {
+    final id = song?.id;
+    if (id == null || id.isEmpty) return;
+    if (_shuffleHistory.isEmpty || _shuffleHistory.last != id) {
+      _shuffleHistory.add(id);
+    }
+    while (_shuffleHistory.length > 50) {
+      _shuffleHistory.removeAt(0);
+    }
+  }
+
+  int _selectShuffleNextIndex() {
+    if (_queue.isEmpty) return -1;
+    if (_queue.length == 1) return 0;
+
+    final recentLimit = min(_queue.length - 1, 12);
+    final blockedIds = _shuffleHistory.reversed.take(recentLimit).toSet();
+    final currentId = _currentSong?.id;
+    if (currentId != null) blockedIds.add(currentId);
+
+    final preferred = <int>[];
+    for (var i = 0; i < _queue.length; i++) {
+      if (i == _currentIndex) continue;
+      if (!blockedIds.contains(_queue[i].id)) preferred.add(i);
+    }
+    if (preferred.isNotEmpty) {
+      return preferred[Random().nextInt(preferred.length)];
+    }
+
+    final fallback = <int>[];
+    for (var i = 0; i < _queue.length; i++) {
+      if (i != _currentIndex) fallback.add(i);
+    }
+    return fallback[Random().nextInt(fallback.length)];
   }
 
   Future<void> _addAutoDjSongs() async {
