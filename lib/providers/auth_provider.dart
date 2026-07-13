@@ -94,6 +94,9 @@ class AuthProvider extends ChangeNotifier {
       offlineService.flushPendingScrobbles(_subsonicService).catchError(
             (e) => debugPrint('Error flushing pending scrobbles: $e'),
           );
+      offlineService.reconcileDownloadedPlaylists(_subsonicService).catchError(
+            (e) => debugPrint('Error reconciling downloaded playlists: $e'),
+          );
     } else {
       debugPrint('[Auth] Ping failed: ${pingResult.error}');
 
@@ -220,6 +223,11 @@ class AuthProvider extends ChangeNotifier {
         await offlineService.initialize();
         offlineService.flushPendingScrobbles(_subsonicService).catchError(
               (e) => debugPrint('Error flushing pending scrobbles: $e'),
+            );
+        offlineService
+            .reconcileDownloadedPlaylists(_subsonicService)
+            .catchError(
+              (e) => debugPrint('Error reconciling downloaded playlists: $e'),
             );
         return true;
       } else {

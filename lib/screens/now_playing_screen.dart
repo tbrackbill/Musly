@@ -15,6 +15,7 @@ import '../models/song.dart';
 import '../models/radio_station.dart';
 import '../providers/player_provider.dart';
 import '../providers/library_provider.dart';
+import '../services/offline_service.dart';
 import '../services/subsonic_service.dart';
 import '../services/player_ui_settings_service.dart';
 import '../widgets/star_rating_widget.dart';
@@ -294,6 +295,10 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
       return song.coverArt;
     }
 
+    final offlinePath =
+        OfflineService().getLocalCoverArtPathByCoverArtId(song.coverArt);
+    if (offlinePath != null) return offlinePath;
+
     final subsonicService = Provider.of<SubsonicService>(
       context,
       listen: false,
@@ -466,11 +471,19 @@ class _NowPlayingScreenState extends State<NowPlayingScreen>
           );
         }
 
-        if (_cachedCoverArtId != song.coverArt) {
-          _cachedCoverArtId = song.coverArt;
+        final offlineArtworkPath = isLocalFilePath(song.coverArt)
+            ? song.coverArt
+            : OfflineService().getLocalCoverArtPathByCoverArtId(song.coverArt);
+        final artworkCacheKey = '${song.coverArt}|$offlineArtworkPath';
+
+        if (_cachedCoverArtId != artworkCacheKey) {
+          _cachedCoverArtId = artworkCacheKey;
           if (isLocalFilePath(song.coverArt)) {
             _cachedImageUrl = song.coverArt;
             _cachedThumbnailUrl = song.coverArt;
+          } else if (offlineArtworkPath != null) {
+            _cachedImageUrl = offlineArtworkPath;
+            _cachedThumbnailUrl = offlineArtworkPath;
           } else {
             final subsonicService = Provider.of<SubsonicService>(
               context,
