@@ -53,7 +53,8 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
   void _updateDownloadState() {
     if (!mounted) return;
     final offline = OfflineService();
-    final allDown = offline.downloadedPlaylistIds.value.contains(widget.playlistId);
+    final allDown =
+        offline.downloadedPlaylistIds.value.contains(widget.playlistId);
     final queued = offline.queuedPlaylistIds.value.contains(widget.playlistId);
     if (allDown != _allDownloaded || queued != _isQueued) {
       setState(() {
@@ -304,9 +305,11 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
     final songs = _playlist?.songs;
     if (songs == null || songs.isEmpty) return;
     final offlineService = OfflineService();
-    final subsonicService = Provider.of<SubsonicService>(context, listen: false);
+    final subsonicService =
+        Provider.of<SubsonicService>(context, listen: false);
     await offlineService.initialize();
-    offlineService.queuePlaylistDownload(widget.playlistId, songs, subsonicService);
+    offlineService.queuePlaylistDownload(
+        widget.playlistId, songs, subsonicService);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -328,9 +331,12 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Remove downloads?'),
-        content: Text('Remove all ${songs.length} downloaded songs from "${_playlist!.name}"?'),
+        content: Text(
+            'Remove all ${songs.length} downloaded songs from "${_playlist!.name}"?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Remove', style: TextStyle(color: Colors.red)),
@@ -345,13 +351,6 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
   }
 
   Widget _buildDownloadButton(BuildContext context) {
-    if (_allDownloaded) {
-      return IconButton(
-        tooltip: 'Downloaded — tap to remove',
-        onPressed: _removeDownloads,
-        icon: const Icon(Icons.cloud_done, color: Colors.green),
-      );
-    }
     if (_isQueued) {
       return IconButton(
         tooltip: 'Downloading — tap to cancel',
@@ -361,6 +360,13 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
           height: 20,
           child: CircularProgressIndicator(strokeWidth: 2),
         ),
+      );
+    }
+    if (_allDownloaded) {
+      return IconButton(
+        tooltip: 'Downloaded — tap to remove',
+        onPressed: _removeDownloads,
+        icon: const Icon(Icons.cloud_done, color: Colors.green),
       );
     }
     return IconButton(
@@ -420,14 +426,16 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                   ValueListenableBuilder<Set<String>>(
                     valueListenable: OfflineService().downloadedPlaylistIds,
                     builder: (context, downloaded, _) {
-                      final allDownloaded = downloaded.contains(widget.playlistId);
+                      final allDownloaded =
+                          downloaded.contains(widget.playlistId);
                       return Stack(
                         children: [
                           Container(
                             width: 150,
                             height: 150,
                             decoration: BoxDecoration(
-                              color: AppTheme.appleMusicRed.withValues(alpha: 0.15),
+                              color: AppTheme.appleMusicRed
+                                  .withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: _playlist!.coverArt != null
@@ -575,12 +583,14 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                     child: ValueListenableBuilder<Set<String>>(
                       valueListenable: OfflineService().downloadedPlaylistIds,
                       builder: (context, downloaded, _) {
-                        final allDownloaded = downloaded.contains(widget.playlistId);
+                        final allDownloaded =
+                            downloaded.contains(widget.playlistId);
                         return Stack(
                           children: [
                             Container(
                               decoration: BoxDecoration(
-                                color: AppTheme.appleMusicRed.withValues(alpha: 0.15),
+                                color: AppTheme.appleMusicRed
+                                    .withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: _playlist!.coverArt != null

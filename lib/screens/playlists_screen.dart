@@ -220,11 +220,13 @@ class _PlaylistTile extends StatelessWidget {
           return ValueListenableBuilder<Set<String>>(
             valueListenable: OfflineService().queuedPlaylistIds,
             builder: (context, queued, _) {
-              if (downloaded.contains(playlist.id)) {
-                return const Icon(Icons.check_circle, size: 20, color: Colors.green);
-              }
               if (queued.contains(playlist.id)) {
-                return const Icon(Icons.check_circle_outline, size: 20, color: Colors.green);
+                return const Icon(Icons.check_circle_outline,
+                    size: 20, color: Colors.green);
+              }
+              if (downloaded.contains(playlist.id)) {
+                return const Icon(Icons.check_circle,
+                    size: 20, color: Colors.green);
               }
               return const Icon(
                 CupertinoIcons.chevron_right,

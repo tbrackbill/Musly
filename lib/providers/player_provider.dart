@@ -78,7 +78,8 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
   bool _shouldResumeOnFocusGain = false;
 
   /// Emits the connected device when a BT hint should be shown to the user.
-  final ValueNotifier<BluetoothDeviceInfo?> pendingBluetoothAvrcpHint = ValueNotifier(null);
+  final ValueNotifier<BluetoothDeviceInfo?> pendingBluetoothAvrcpHint =
+      ValueNotifier(null);
   bool _bluetoothHintShownThisSession = false;
 
   String? _resolvedArtworkUrl;
@@ -432,7 +433,8 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
         if (active) {
           // Pre-warm the audio source so the first AVRCP PLAY command doesn't
           // stall waiting for ConcatenatingAudioSource to be built from scratch.
-          if (_currentSong != null && !_isRenderingRemotely &&
+          if (_currentSong != null &&
+              !_isRenderingRemotely &&
               _audioPlayer.audioSource == null) {
             _prepareCurrentSong().catchError(
               (e) => debugPrint('[Player] BT pre-warm failed: $e'),
@@ -517,6 +519,26 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  bool _isLocalArtworkPath(String? path) {
+    if (path == null || path.isEmpty) return false;
+    if (path.startsWith('/')) return true;
+    return path.length > 2 && path[1] == ':';
+  }
+
+  String _artworkUrlForSong(Song song, {int size = 300}) {
+    if (_isLocalArtworkPath(song.coverArt)) {
+      return Uri.file(song.coverArt!).toString();
+    }
+
+    final localPath = _offlineService.getLocalCoverArtPath(song.id) ??
+        _offlineService.getLocalCoverArtPathByCoverArtId(song.coverArt);
+    if (localPath != null) {
+      return Uri.file(localPath).toString();
+    }
+
+    return _subsonicService.getCoverArtUrl(song.coverArt, size: size);
+  }
+
   Future<List<Map<String, String>>> _getAlbumSongsForAndroidAuto(
     String albumId,
   ) async {
@@ -534,11 +556,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
                 'title': song.title,
                 'artist': song.artist ?? '',
                 'album': song.album ?? '',
-                'artworkUrl': _offlineService.getLocalCoverArtPath(song.id) !=
-                        null
-                    ? Uri.file(_offlineService.getLocalCoverArtPath(song.id)!)
-                        .toString()
-                    : _subsonicService.getCoverArtUrl(song.coverArt, size: 300),
+                'artworkUrl': _artworkUrlForSong(song),
                 'duration': (song.duration ?? 0).toString(),
               },
             )
@@ -640,12 +658,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
                   'title': song.title,
                   'artist': song.artist ?? '',
                   'album': song.album ?? '',
-                  'artworkUrl': _offlineService.getLocalCoverArtPath(song.id) !=
-                          null
-                      ? Uri.file(_offlineService.getLocalCoverArtPath(song.id)!)
-                          .toString()
-                      : _subsonicService.getCoverArtUrl(song.coverArt,
-                          size: 300),
+                  'artworkUrl': _artworkUrlForSong(song),
                   'duration': (song.duration ?? 0).toString(),
                 },
               )
@@ -706,11 +719,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
               'title': song.title,
               'artist': song.artist ?? '',
               'album': song.album ?? '',
-              'artworkUrl': _offlineService.getLocalCoverArtPath(song.id) !=
-                      null
-                  ? Uri.file(_offlineService.getLocalCoverArtPath(song.id)!)
-                      .toString()
-                  : _subsonicService.getCoverArtUrl(song.coverArt, size: 300),
+              'artworkUrl': _artworkUrlForSong(song),
               'duration': (song.duration ?? 0).toString(),
             },
           )
@@ -848,7 +857,8 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
 
     await _offlineService.initialize();
 
-    final localPath = _offlineService.getLocalCoverArtPath(song.id);
+    final localPath = _offlineService.getLocalCoverArtPath(song.id) ??
+        _offlineService.getLocalCoverArtPathByCoverArtId(song.coverArt);
     if (localPath != null) {
       _resolvedArtworkUrl = Uri.file(localPath).toString();
       if (_currentSong?.id == song.id) _updateAllServices();
@@ -1183,7 +1193,6 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     _offlineService.initialize().then((_) {
       _offlineService.resumeIncompleteDownloads(_subsonicService);
     });
-
 
     _storageService.getRepeatMode().then((saved) {
       _repeatMode =
@@ -2854,8 +2863,8 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
             _position >= _duration - const Duration(seconds: 3);
         if (nearEnd) {
           _castWasPlaying = false;
-          _onSongComplete()
-              .catchError((e) => debugPrint('[Player] Cast _onSongComplete: $e'));
+          _onSongComplete().catchError(
+              (e) => debugPrint('[Player] Cast _onSongComplete: $e'));
           return;
         }
       }

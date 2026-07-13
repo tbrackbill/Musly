@@ -111,7 +111,8 @@ class _AlbumScreenState extends State<AlbumScreen> {
   Future<void> _downloadAlbum() async {
     if (_songs.isEmpty || _album == null) return;
     final offlineService = OfflineService();
-    final subsonicService = Provider.of<SubsonicService>(context, listen: false);
+    final subsonicService =
+        Provider.of<SubsonicService>(context, listen: false);
     await offlineService.initialize();
     offlineService.queuePlaylistDownload(_album!.id, _songs, subsonicService);
     if (mounted) {
@@ -135,9 +136,12 @@ class _AlbumScreenState extends State<AlbumScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Remove downloads?'),
-        content: Text('Remove all ${_songs.length} downloaded songs from "${_album!.name}"?'),
+        content: Text(
+            'Remove all ${_songs.length} downloaded songs from "${_album!.name}"?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Remove', style: TextStyle(color: Colors.red)),
@@ -152,13 +156,6 @@ class _AlbumScreenState extends State<AlbumScreen> {
   }
 
   Widget _buildDownloadButton(BuildContext context) {
-    if (_allDownloaded) {
-      return IconButton(
-        tooltip: 'Downloaded — tap to remove',
-        onPressed: _removeDownloads,
-        icon: const Icon(Icons.cloud_done, color: Colors.green),
-      );
-    }
     if (_isQueued) {
       return IconButton(
         tooltip: 'Downloading — tap to cancel',
@@ -168,6 +165,13 @@ class _AlbumScreenState extends State<AlbumScreen> {
           height: 20,
           child: CircularProgressIndicator(strokeWidth: 2),
         ),
+      );
+    }
+    if (_allDownloaded) {
+      return IconButton(
+        tooltip: 'Downloaded — tap to remove',
+        onPressed: _removeDownloads,
+        icon: const Icon(Icons.cloud_done, color: Colors.green),
       );
     }
     return IconButton(
@@ -285,20 +289,26 @@ class _AlbumScreenState extends State<AlbumScreen> {
                   background: ValueListenableBuilder<Set<String>>(
                     valueListenable: OfflineService().downloadedPlaylistIds,
                     builder: (context, downloaded, _) {
-                      final allDownloaded = _album != null && downloaded.contains(_album!.id);
+                      final allDownloaded =
+                          _album != null && downloaded.contains(_album!.id);
                       return Stack(
                         fit: StackFit.expand,
                         children: [
                           Padding(
                             padding: EdgeInsets.only(
                               top: MediaQuery.of(context).padding.top + 40,
-                              left: ScreenHelper.isSmallScreen(context) ? 24 : 40,
-                              right: ScreenHelper.isSmallScreen(context) ? 24 : 40,
-                              bottom: ScreenHelper.isSmallScreen(context) ? 60 : 80,
+                              left:
+                                  ScreenHelper.isSmallScreen(context) ? 24 : 40,
+                              right:
+                                  ScreenHelper.isSmallScreen(context) ? 24 : 40,
+                              bottom:
+                                  ScreenHelper.isSmallScreen(context) ? 60 : 80,
                             ),
                             child: AlbumArtwork(
                               coverArt: _album!.coverArt,
-                              size: ScreenHelper.isSmallScreen(context) ? 200 : 280,
+                              size: ScreenHelper.isSmallScreen(context)
+                                  ? 200
+                                  : 280,
                               borderRadius: 10,
                               preserveAspectRatio: true,
                             ),

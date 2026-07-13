@@ -486,16 +486,18 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   return ValueListenableBuilder<Set<String>>(
                     valueListenable: OfflineService().queuedPlaylistIds,
                     builder: (context, queued, _) {
-                      if (downloaded.contains(item.id)) {
-                        return const Padding(
-                          padding: EdgeInsets.only(left: 8),
-                          child: Icon(Icons.check_circle, color: Colors.green, size: 18),
-                        );
-                      }
                       if (queued.contains(item.id)) {
                         return const Padding(
                           padding: EdgeInsets.only(left: 8),
-                          child: Icon(Icons.check_circle_outline, color: Colors.green, size: 18),
+                          child: Icon(Icons.check_circle_outline,
+                              color: Colors.green, size: 18),
+                        );
+                      }
+                      if (downloaded.contains(item.id)) {
+                        return const Padding(
+                          padding: EdgeInsets.only(left: 8),
+                          child: Icon(Icons.check_circle,
+                              color: Colors.green, size: 18),
                         );
                       }
                       return const SizedBox.shrink();
