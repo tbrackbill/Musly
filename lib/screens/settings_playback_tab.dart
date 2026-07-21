@@ -77,6 +77,8 @@ class _SettingsPlaybackTabState extends State<SettingsPlaybackTab> {
         const SizedBox(height: 24),
         _buildGaplessSection(),
         const SizedBox(height: 24),
+        _buildBluetoothSection(),
+        const SizedBox(height: 24),
         _buildFadeSection(),
         const SizedBox(height: 24),
         _buildLrcLibSection(),
@@ -441,6 +443,58 @@ class _SettingsPlaybackTabState extends State<SettingsPlaybackTab> {
                 value: player.gaplessEnabled,
                 activeTrackColor: accent,
                 onChanged: (_) => player.toggleGaplessPlayback(),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildBluetoothSection() {
+    return Consumer<PlayerProvider>(
+      builder: (context, player, _) {
+        final accent = Theme.of(context).colorScheme.primary;
+        return _buildSection(
+          title: 'Bluetooth',
+          children: [
+            ListTile(
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 4,
+              ),
+              leading: Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [accent, accent.withValues(alpha: 0.6)],
+                  ),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  CupertinoIcons.bluetooth,
+                  color: Colors.white,
+                  size: 18,
+                ),
+              ),
+              title: const Text(
+                'Resume on connect',
+                style: TextStyle(fontSize: 16),
+              ),
+              subtitle: Text(
+                'Auto-play the last queue when connecting to a car or headset',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.white.withValues(alpha: 0.5)
+                      : Colors.black.withValues(alpha: 0.5),
+                ),
+              ),
+              trailing: CupertinoSwitch(
+                value: player.resumeOnBluetoothConnect,
+                activeTrackColor: accent,
+                onChanged: (_) => player.toggleResumeOnBluetoothConnect(),
               ),
             ),
           ],

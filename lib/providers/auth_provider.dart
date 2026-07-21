@@ -73,41 +73,77 @@ class AuthProvider extends ChangeNotifier {
       }
     }
     if (pingResult!.success) {
-      debugPrint(
-          '[Auth] Ping OK — type=${pingResult.serverType} version=${pingResult.serverVersion}');
-      if (_config != null) {
-        final updatedConfig = _config!.copyWith(
-          serverType: pingResult.serverType,
-          serverVersion: pingResult.serverVersion,
-        );
-        if (updatedConfig.serverType != _config!.serverType ||
-            updatedConfig.serverVersion != _config!.serverVersion) {
-          _config = updatedConfig;
-          await _storageService.saveServerConfig(updatedConfig);
-        }
-      }
-      debugPrint('[Auth] State: authenticating → authenticated');
-      _state = AuthState.authenticated;
-
-      final offlineService = OfflineService();
-      await offlineService.initialize();
-      offlineService.flushPendingScrobbles(_subsonicService).catchError(
-            (e) => debugPrint('Error flushing pending scrobbles: $e'),
-          );
-      offlineService.reconcileDownloadedPlaylists(_subsonicService).catchError(
-            (e) => debugPrint('Error reconciling downloaded playlists: $e'),
-          );
+      await _applySuccessfulPing(pingResult);
     } else {
       debugPrint('[Auth] Ping failed: ${pingResult.error}');
 
       final offlineService = OfflineService();
       await offlineService.initialize();
       _hasOfflineContent = offlineService.getDownloadedCount() > 0;
-      debugPrint(
-          '[Auth] State: authenticating → serverUnreachable (offlineContent=$_hasOfflineContent)');
-      _state = AuthState.serverUnreachable;
+      if (_hasOfflineContent) {
+        // Auto-progress straight into offline mode (the top banner) instead of
+        // making the user tap through the server-unreachable screen. The banner
+        // itself offers a tap-to-retry, so nothing is lost.
+        offlineService.setOfflineMode(true);
+        debugPrint(
+            '[Auth] State: authenticating → offlineMode (auto, offlineContent=true)');
+        _state = AuthState.offlineMode;
+      } else {
+        debugPrint(
+            '[Auth] State: authenticating → serverUnreachable (no offline content)');
+        _state = AuthState.serverUnreachable;
+      }
     }
     notifyListeners();
+  }
+
+  /// Shared "connection is up" transition: refresh config, go authenticated,
+  /// clear offline mode, and kick off offline-service housekeeping.
+  Future<void> _applySuccessfulPing(PingResult pingResult) async {
+    debugPrint(
+        '[Auth] Ping OK — type=${pingResult.serverType} version=${pingResult.serverVersion}');
+    if (_config != null) {
+      final updatedConfig = _config!.copyWith(
+        serverType: pingResult.serverType,
+        serverVersion: pingResult.serverVersion,
+      );
+      if (updatedConfig.serverType != _config!.serverType ||
+          updatedConfig.serverVersion != _config!.serverVersion) {
+        _config = updatedConfig;
+        await _storageService.saveServerConfig(updatedConfig);
+      }
+    }
+    debugPrint('[Auth] State: → authenticated');
+    _state = AuthState.authenticated;
+
+    final offlineService = OfflineService();
+    offlineService.setOfflineMode(false);
+    await offlineService.initialize();
+    offlineService.flushPendingScrobbles(_subsonicService).catchError(
+          (e) => debugPrint('Error flushing pending scrobbles: $e'),
+        );
+    offlineService.reconcileDownloadedPlaylists(_subsonicService).catchError(
+          (e) => debugPrint('Error reconciling downloaded playlists: $e'),
+        );
+  }
+
+  /// Lightweight retry used by the offline banner: a single ping that stays in
+  /// offline mode (banner visible, app usable) unless it succeeds. Avoids the
+  /// full-screen `authenticating` spinner that [retryConnection] triggers.
+  Future<void> retryConnectionQuiet() async {
+    if (_config == null) return;
+    await _subsonicService.configure(_config!);
+    final pingResult = await _subsonicService.pingWithError().timeout(
+          const Duration(seconds: 8),
+          onTimeout: () =>
+              PingResult(success: false, error: 'Connection timed out'),
+        );
+    if (pingResult.success) {
+      await _applySuccessfulPing(pingResult);
+      notifyListeners();
+    } else {
+      debugPrint('[Auth] Quiet retry failed: ${pingResult.error} — staying offline');
+    }
   }
 
   void enterOfflineMode() {

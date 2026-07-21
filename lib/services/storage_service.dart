@@ -11,6 +11,7 @@ class StorageService {
   static const String _shuffleModeKey = 'shuffle_mode';
   static const String _repeatModeKey = 'repeat_mode';
   static const String _gaplessPlaybackKey = 'gapless_playback';
+  static const String _resumeOnBluetoothKey = 'resume_on_bluetooth_connect';
   static const String _lrcLibFallbackKey = 'lrclib_fallback';
   static const String _volumeKey = 'volume';
 
@@ -137,6 +138,16 @@ class StorageService {
   Future<bool> getGaplessPlayback() async {
     final prefs = await _prefs;
     return prefs.getBool(_gaplessPlaybackKey) ?? true;
+  }
+
+  Future<void> saveResumeOnBluetoothConnect(bool enabled) async {
+    final prefs = await _prefs;
+    await prefs.setBool(_resumeOnBluetoothKey, enabled);
+  }
+
+  Future<bool> getResumeOnBluetoothConnect() async {
+    final prefs = await _prefs;
+    return prefs.getBool(_resumeOnBluetoothKey) ?? true;
   }
 
   Future<void> saveLrcLibFallback(bool enabled) async {

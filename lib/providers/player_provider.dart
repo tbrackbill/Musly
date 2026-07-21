@@ -61,6 +61,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
   bool _isLoading = false;
   bool _shuffleEnabled = false;
   bool _gaplessEnabled = true;
+  bool _resumeOnBluetoothConnect = true;
   final List<String> _shuffleHistory = [];
   RepeatMode _repeatMode = RepeatMode.off;
   Duration _position = Duration.zero;
@@ -431,11 +432,23 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
         _isA2dpAudioActive = active;
         debugPrint('Bluetooth A2DP audio active: $_isA2dpAudioActive');
         if (active) {
-          // Pre-warm the audio source so the first AVRCP PLAY command doesn't
-          // stall waiting for ConcatenatingAudioSource to be built from scratch.
-          if (_currentSong != null &&
+          final canResume = _resumeOnBluetoothConnect &&
+              _currentSong != null &&
+              !_isPlaying &&
+              !_isRenderingRemotely;
+          if (canResume) {
+            // Resume-on-connect: play() both prepares the source and starts
+            // playback, so we must NOT also pre-warm below — two concurrent
+            // _prepareCurrentSong() calls would race on setAudioSource().
+            play().catchError(
+              (e) => debugPrint('[Player] BT resume-on-connect failed: $e'),
+            );
+          } else if (_currentSong != null &&
               !_isRenderingRemotely &&
               _audioPlayer.audioSource == null) {
+            // Not auto-resuming — still pre-warm the source so a manual AVRCP
+            // PLAY from the head unit starts instantly instead of stalling
+            // while the ConcatenatingAudioSource is built from scratch.
             _prepareCurrentSong().catchError(
               (e) => debugPrint('[Player] BT pre-warm failed: $e'),
             );
@@ -1203,6 +1216,10 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     _storageService.getGaplessPlayback().then((saved) {
       _gaplessEnabled = saved;
       notifyListeners();
+    });
+
+    _storageService.getResumeOnBluetoothConnect().then((saved) {
+      _resumeOnBluetoothConnect = saved;
     });
 
     _playerStateSub = _audioPlayer.playerStateStream.listen(
@@ -2307,6 +2324,14 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
+  bool get resumeOnBluetoothConnect => _resumeOnBluetoothConnect;
+
+  void toggleResumeOnBluetoothConnect() {
+    _resumeOnBluetoothConnect = !_resumeOnBluetoothConnect;
+    _storageService.saveResumeOnBluetoothConnect(_resumeOnBluetoothConnect);
+    notifyListeners();
+  }
+
   void addToQueue(Song song) {
     _queue.add(song);
     notifyListeners();
@@ -2880,6 +2905,25 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
     if (_castService.isConnected) {
       final isPlaying = _castService.mediaState.isPlaying;
+
+      // Sync position/duration from the cast device into the provider. Without
+      // this, _position stays at 0 and _duration stays stale, so the UI progress
+      // bar is frozen AND the track-end heuristic below never fires (Cast
+      // auto-advance breaks). Mirrors what the UPnP poll does.
+      if (_isRenderingRemotely) {
+        final cast = _castService.mediaState;
+        bool changed = false;
+        if ((_position - cast.position).abs() >
+            const Duration(milliseconds: 500)) {
+          _position = cast.position;
+          changed = true;
+        }
+        if (cast.duration > Duration.zero && cast.duration != _duration) {
+          _duration = cast.duration;
+          changed = true;
+        }
+        if (changed) _positionController.add(_position);
+      }
 
       // Detect natural track end: Cast stayed connected but stopped playing.
       // Guard with position proximity so a mid-song pause doesn't trigger

@@ -406,6 +406,17 @@ class _MainScreenState extends State<MainScreen> {
     return Platform.isWindows || Platform.isLinux || Platform.isMacOS;
   }
 
+  void _retryConnection(BuildContext context) {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Reconnecting…'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+    authProvider.retryConnectionQuiet();
+  }
+
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
@@ -489,44 +500,52 @@ class _MainScreenState extends State<MainScreen> {
             body: Column(
               children: [
                 if (widget.isOfflineMode || isLocalMode)
-                  Container(
-                    width: double.infinity,
-                    color: isLocalMode ? Colors.indigo : Colors.orange,
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 8,
-                      horizontal: 16,
-                    ),
-                    child: SafeArea(
-                      bottom: false,
-                      child: Row(
-                        children: [
-                          Icon(
-                            isLocalMode
-                                ? CupertinoIcons.folder_fill
-                                : CupertinoIcons.wifi_slash,
-                            color: Colors.white,
-                            size: 18,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
+                  GestureDetector(
+                    onTap: isLocalMode ? null : () => _retryConnection(context),
+                    child: Container(
+                      width: double.infinity,
+                      color: isLocalMode ? Colors.indigo : Colors.orange,
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 8,
+                        horizontal: 16,
+                      ),
+                      child: SafeArea(
+                        bottom: false,
+                        child: Row(
+                          children: [
+                            Icon(
                               isLocalMode
-                                  ? AppLocalizations.of(
-                                      context,
-                                    )!
-                                      .localFilesModeBanner
-                                  : AppLocalizations.of(
-                                      context,
-                                    )!
-                                      .offlineModeBanner,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
+                                  ? CupertinoIcons.folder_fill
+                                  : CupertinoIcons.wifi_slash,
+                              color: Colors.white,
+                              size: 18,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                isLocalMode
+                                    ? AppLocalizations.of(
+                                        context,
+                                      )!
+                                        .localFilesModeBanner
+                                    : '${AppLocalizations.of(context)!.offlineModeBanner} · Tap to retry connection',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                ),
                               ),
                             ),
-                          ),
-                        ],
+                            if (!isLocalMode) ...[
+                              const SizedBox(width: 8),
+                              const Icon(
+                                CupertinoIcons.refresh,
+                                color: Colors.white,
+                                size: 16,
+                              ),
+                            ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
