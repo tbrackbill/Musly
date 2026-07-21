@@ -12,6 +12,7 @@ import android.graphics.drawable.AnimatedVectorDrawable
 import android.graphics.drawable.TransitionDrawable
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
 import android.support.v4.media.MediaBrowserCompat
 import android.support.v4.media.MediaDescriptionCompat
 import android.support.v4.media.MediaMetadataCompat
@@ -65,6 +66,15 @@ class MusicService : MediaBrowserServiceCompat() {
     private var isPlaying: Boolean = false
     private var volumeProvider: VolumeProviderCompat? = null
     private var upnpExpectedVolume = 0
+
+    // Remote rendering (Cast / DLNA-UPnP) plays audio on another device, so the
+    // system holds no audio wakelock for us. With the screen off, Android then
+    // throttles this app's isolate and the 1-second poll that detects track-end
+    // is deferred — the next track stalls for seconds. We hold a PARTIAL_WAKE_LOCK
+    // (CPU on, screen stays off) while remotely rendering and playing so that poll
+    // keeps its cadence. Released the moment we stop playing or disconnect.
+    private var remoteActive = false
+    private var remoteWakeLock: PowerManager.WakeLock? = null
     
     private var currentLyricsLine: String? = null
     private var hasLyrics: Boolean = false
@@ -566,6 +576,7 @@ class MusicService : MediaBrowserServiceCompat() {
         currentArtworkUrl = artworkUrl
         currentDuration = duration
         currentPosition = position
+        val playingChanged = isPlaying != playing
         isPlaying = playing
 
         if (metadataChanged) {
@@ -573,6 +584,7 @@ class MusicService : MediaBrowserServiceCompat() {
         }
         updateMediaSessionPlaybackState()
         showNotification()
+        if (playingChanged) updateRemotePlaybackWakeLock()
     }
 
     private fun updateMediaSessionMetadata() {
@@ -917,6 +929,33 @@ class MusicService : MediaBrowserServiceCompat() {
             mediaSession.setPlaybackToLocal(AudioManager.STREAM_MUSIC)
             Log.d(TAG, "MediaSession set to local volume")
         }
+        remoteActive = isRemote
+        updateRemotePlaybackWakeLock()
+    }
+
+    /**
+     * Hold a partial wakelock only while we are actively rendering on a remote
+     * device AND playing. Acquired/released on transitions, never on a timer that
+     * could itself be throttled — the whole point is to survive isolate throttling.
+     */
+    private fun updateRemotePlaybackWakeLock() {
+        val shouldHold = remoteActive && isPlaying
+        if (shouldHold) {
+            if (remoteWakeLock == null) {
+                val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+                remoteWakeLock = pm.newWakeLock(
+                    PowerManager.PARTIAL_WAKE_LOCK,
+                    "musly:remote_playback"
+                ).apply { setReferenceCounted(false) }
+            }
+            if (remoteWakeLock?.isHeld == false) {
+                remoteWakeLock?.acquire()
+                Log.d(TAG, "Acquired remote-playback wakelock")
+            }
+        } else if (remoteWakeLock?.isHeld == true) {
+            remoteWakeLock?.release()
+            Log.d(TAG, "Released remote-playback wakelock")
+        }
     }
 
     fun updateRemoteVolume(volume: Int) {
@@ -948,6 +987,8 @@ class MusicService : MediaBrowserServiceCompat() {
     override fun onDestroy() {
         Log.d(TAG, "MusicService onDestroy")
         instance = null
+        if (remoteWakeLock?.isHeld == true) remoteWakeLock?.release()
+        remoteWakeLock = null
         super.onDestroy()
         serviceScope.cancel()
         mediaSession.isActive = false
