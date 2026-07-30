@@ -110,10 +110,10 @@ does not rescue the drive where it first breaks, but it does fix **GAP-1**
 
 | id | Gap | Why it matters | Fix |
 |---|---|---|---|
-| ~~GAP-1~~ | ~~No boot / package-replaced receiver~~ | **FIXED.** `MediaSessionRegistrationReceiver` re-registers on `BOOT_COMPLETED`, `LOCKED_BOOT_COMPLETED` and `MY_PACKAGE_REPLACED`; `MusicService` registers the session then stands down (`ACTION_REGISTER_SESSION`), leaving nothing resident. Verified end-to-end on a real update: post-update, never-opened, screen-off cold start reached audio in ~8s. | done |
+| ~~GAP-1~~ | ~~No boot / package-replaced receiver~~ | **FIXED.** `MediaSessionRegistrationReceiver` re-registers on `BOOT_COMPLETED` and `MY_PACKAGE_REPLACED` (not `LOCKED_BOOT_COMPLETED` — MusicService is not direct-boot aware, and the queue and credentials are unreadable before first unlock); `MusicService` registers the session then stands down (`ACTION_REGISTER_SESSION`), leaving nothing resident. Verified end-to-end on both a real update and a real reboot: never-opened, screen-off cold start reached audio in ~8s. | done |
 | GAP-2 | Headless cold start only verified for R1, online | A headless start with the server unreachable, or with Cast/DLNA previously connected, is untested. | Extend harness + Dart tests. |
 | GAP-3 | Track-end auto-advance for Cast is a position heuristic | Silently broke once already (fixed in `bb3852f`). | `syncRemotePosition` now covered; the advance heuristic itself is still not. |
-| GAP-4 | `startForeground` refusal path untested | Now caught, but nothing proves the service still works after the catch. | Instrumented test. |
+| ~~GAP-4~~ | ~~`startForeground` refusal untested~~ | **Exercised in the wild.** On the verified reboot, SystemUI's ResumeMediaBrowser bound MusicService and the resulting `startForeground()` was denied; the catch held and the service still answered the resumption probe. Before that catch this crashed the process out of `onCreate` on *every* boot. | done |
 | GAP-5 | Wakelock during remote playback untested | Regression here means stalled auto-advance with the screen off. | Harness scenario. |
 | GAP-6 | Focus-regain resume untested | `_shouldResumeOnFocusGain` is set in exactly one place; easy to break. | Dart test. |
 | GAP-7 | Jukebox not guarded by the remote checks | Audio focus loss / noisy will pause local playback state while the *server* keeps playing → UI desync. | Treat jukebox as remote in the P2-P6 guards. |
