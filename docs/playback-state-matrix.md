@@ -37,7 +37,7 @@ renderer — which is why a Bluetooth speaker exercises the same code as a car.
 | S3 | Media button, app backgrounded, screen off | ✓ | ✓ | ✓ | ✓ | **A** |
 | S4 | Media button, process dead, package *not* stopped | ✓ | — | — | — | **A** ← the head-unit bug |
 | S5 | Media button, package **stopped** (force-stop) | ✗ | ✗ | ✗ | ✗ | **A** — unfixable, see below |
-| S6 | Media button after device reboot | ✗ | — | — | — | **GAP-1** |
+| S6 | Media button after device reboot / app update | ✓ | — | — | — | **A** (update path verified) |
 | S7 | A2DP connect → resume-on-connect | ✓ | n/a² | n/a² | ? | **D** (logic) + **H** (timing) |
 | S8 | Android Auto browse → play | ✓ | ✓ | ✓ | ✓ | **GAP** |
 | S9 | Headless engine start (no UI) | ✓ | ? | ? | ? | **A** (R1 only) — **GAP-2** |
@@ -65,8 +65,8 @@ renderer — which is why a Bluetooth speaker exercises the same code as a car.
 | C2 | Activity destroyed, process alive | engine now survives (cached engine); playback unaffected | **A** |
 | C3 | Swipe from Recents | process survives (`stopWithTask="false"`) | **A** |
 | C4 | `force-stop` / package stopped flag | **all PendingIntents cancelled — unrecoverable** | **A** (documented) |
-| C5 | Package updated (Obtainium) | package enters stopped state until next launch | **GAP-1** |
-| C6 | Device reboot | no session, no MBR registered until app opened | **GAP-1** |
+| C5 | Package updated (Obtainium) | `MY_PACKAGE_REPLACED` re-registers the session, service stands down | **A** ✓verified on a real update |
+| C6 | Device reboot | `BOOT_COMPLETED` re-registers the session | **H** (same code path as C5) |
 | C7 | `startForeground` refused in background | was fatal; now caught | **GAP-4** |
 | C8 | Doze / app standby during local playback | FGS + audio keeps app alive | **H** |
 | C9 | Doze during remote (Cast/DLNA) playback | partial wakelock held (`a495233`) | **GAP-5** |
@@ -109,7 +109,7 @@ does not rescue the drive where it first breaks, but it does fix **GAP-1**
 
 | id | Gap | Why it matters | Fix |
 |---|---|---|---|
-| GAP-1 | No `BOOT_COMPLETED` / `PACKAGE_UNSTOPPED` receiver | After a reboot or an Obtainium update, no media session exists, so the head unit is dead until the app is opened by hand. Recurs constantly for this project's release cadence. | Manifest receiver that briefly starts `MusicService` to register the session, then lets it stop. The framework remembers `Last MediaButtonReceiver` after the session goes away, so nothing needs to stay resident. |
+| ~~GAP-1~~ | ~~No boot / package-replaced receiver~~ | **FIXED.** `MediaSessionRegistrationReceiver` re-registers on `BOOT_COMPLETED`, `LOCKED_BOOT_COMPLETED` and `MY_PACKAGE_REPLACED`; `MusicService` registers the session then stands down (`ACTION_REGISTER_SESSION`), leaving nothing resident. Verified end-to-end on a real update: post-update, never-opened, screen-off cold start reached audio in ~8s. | done |
 | GAP-2 | Headless cold start only verified for R1, online | A headless start with the server unreachable, or with Cast/DLNA previously connected, is untested. | Extend harness + Dart tests. |
 | GAP-3 | Track-end auto-advance for Cast is a position heuristic | Silently broke once already (fixed in `bb3852f`). | `syncRemotePosition` now covered; the advance heuristic itself is still not. |
 | GAP-4 | `startForeground` refusal path untested | Now caught, but nothing proves the service still works after the catch. | Instrumented test. |

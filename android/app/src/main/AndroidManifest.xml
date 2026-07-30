@@ -2,6 +2,9 @@
     <!-- Network and basic permissions -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <!-- Lets MediaSessionRegistrationReceiver re-register the media session after
+         a reboot, so a car head unit still has something to send PLAY to. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
@@ -111,6 +114,23 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MEDIA_BUTTON"/>
+            </intent-filter>
+        </receiver>
+
+        <!-- Rebuilds the media session after the events that destroy it, so a
+             head unit's PLAY still has a receiver to reach. Without this, every
+             reboot and every app update left the car dead until Musly was next
+             opened by hand. See MediaSessionRegistrationReceiver. -->
+        <receiver
+            android:name=".MediaSessionRegistrationReceiver"
+            android:exported="true"
+            android:directBootAware="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
             </intent-filter>
         </receiver>
         

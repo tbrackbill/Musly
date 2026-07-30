@@ -32,6 +32,9 @@ object AndroidAutoPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
      */
     var pendingCommand: String? = null
 
+    /** Arguments belonging to [pendingCommand], e.g. the mediaId to play. */
+    var pendingArguments: Map<String, Any>? = null
+
     // Buffers for library data sent before MusicService finishes starting.
     private var pendingRecentSongs: List<Map<String, Any>>? = null
     private var pendingAlbums: List<Map<String, Any>>? = null
@@ -53,8 +56,10 @@ object AndroidAutoPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                 // delay gives PlayerProvider time to finish wiring its callbacks.
                 val cmd = pendingCommand
                 if (cmd != null) {
+                    val args = pendingArguments
                     pendingCommand = null
-                    mainHandler.postDelayed({ sendCommand(cmd, null) }, 600)
+                    pendingArguments = null
+                    mainHandler.postDelayed({ sendCommand(cmd, args) }, 600)
                 }
             }
 

@@ -37,6 +37,9 @@ class MusicService : MediaBrowserServiceCompat() {
         private const val MY_MEDIA_ROOT_ID = "media_root_id"
         private const val MY_EMPTY_MEDIA_ROOT_ID = "empty_root_id"
         
+        /** Start action meaning "create the MediaSession, then stop". */
+        const val ACTION_REGISTER_SESSION = "com.devid.musly.REGISTER_SESSION"
+
         const val MEDIA_ID_ROOT = "ROOT"
         const val MEDIA_ID_RECENT = "RECENT"
         const val MEDIA_ID_ALBUMS = "ALBUMS"
@@ -125,8 +128,35 @@ class MusicService : MediaBrowserServiceCompat() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d(TAG, "MusicService onStartCommand action=${intent?.action}")
+
+        if (intent?.action == ACTION_REGISTER_SESSION) {
+            // Woken by MediaSessionRegistrationReceiver purely so onCreate could
+            // build the MediaSession and its media button PendingIntent. The
+            // framework retains the media button receiver after the session and
+            // the process are gone, so there is nothing left to do and nothing
+            // to keep alive — stand down rather than sit in the foreground
+            // burning battery until the user next opens the app.
+            Log.d(TAG, "Session registered; standing down")
+            stopForegroundCompat()
+            if (!isPlaying) stopSelf()
+            return START_NOT_STICKY
+        }
+
         MediaButtonReceiver.handleIntent(mediaSession, intent)
         return START_STICKY
+    }
+
+    private fun stopForegroundCompat() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+            } else {
+                @Suppress("DEPRECATION")
+                stopForeground(true)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "stopForeground failed: ${e.message}")
+        }
     }
 
     private fun showIdleNotification() {
@@ -884,53 +914,66 @@ class MusicService : MediaBrowserServiceCompat() {
         }
     }
 
+    /**
+     * Deliver a transport command to Dart, starting the engine headlessly when
+     * it is not running.
+     *
+     * Anything that begins playback must be able to wake a dead app: a head unit
+     * sends PLAY or NEXT into a process that the OS reclaimed hours ago. Starting
+     * MainActivity to do it does not work — Android refuses with "Background
+     * activity launch blocked" — so the engine comes up with no UI and
+     * AndroidAutoPlugin replays [command] once Dart subscribes.
+     *
+     * Commands that only make sense against live playback (pause, stop, seek)
+     * deliberately do NOT wake anything: booting the whole app in order to pause
+     * silence would be absurd, and a head unit sending PAUSE to a stopped app
+     * expects nothing to happen.
+     */
+    private fun dispatchToFlutter(
+        command: String,
+        args: Map<String, Any>? = null,
+        wakeIfDead: Boolean = false
+    ) {
+        if (AndroidAutoPlugin.isFlutterConnected) {
+            AndroidAutoPlugin.sendCommand(command, args)
+            return
+        }
+        if (!wakeIfDead) {
+            Log.d(TAG, "Dropping '$command': no Flutter engine and nothing to control")
+            return
+        }
+        Log.d(TAG, "'$command' with no Flutter engine — starting headless engine")
+        AndroidAutoPlugin.pendingCommand = command
+        AndroidAutoPlugin.pendingArguments = args
+        MuslyEngine.getOrCreate(applicationContext)
+    }
+
     private inner class MediaSessionCallback : MediaSessionCompat.Callback() {
-        override fun onPlay() {
-            if (AndroidAutoPlugin.isFlutterConnected) {
-                AndroidAutoPlugin.sendCommand("play", null)
-            } else {
-                // Flutter engine not connected (cold start or OS kill). Starting
-                // MainActivity here does NOT work: Android refuses it with
-                // "Background activity launch blocked", so the command was never
-                // delivered and a head unit's PLAY did nothing. Bring Dart up
-                // headlessly instead — no UI required to play audio.
-                // AndroidAutoPlugin flushes the pending command once the engine
-                // subscribes to the event channel.
-                Log.d(TAG, "onPlay with no Flutter engine — starting headless engine")
-                AndroidAutoPlugin.pendingCommand = "play"
-                MuslyEngine.getOrCreate(applicationContext)
-            }
-        }
+        override fun onPlay() = dispatchToFlutter("play", wakeIfDead = true)
 
-        override fun onPause() {
-            AndroidAutoPlugin.sendCommand("pause", null)
-        }
+        override fun onPause() = dispatchToFlutter("pause")
 
-        override fun onStop() {
-            AndroidAutoPlugin.sendCommand("stop", null)
-        }
+        override fun onStop() = dispatchToFlutter("stop")
 
-        override fun onSkipToNext() {
-            AndroidAutoPlugin.sendCommand("skipNext", null)
-        }
+        override fun onSkipToNext() = dispatchToFlutter("skipNext", wakeIfDead = true)
 
-        override fun onSkipToPrevious() {
-            AndroidAutoPlugin.sendCommand("skipPrevious", null)
-        }
+        override fun onSkipToPrevious() =
+            dispatchToFlutter("skipPrevious", wakeIfDead = true)
 
-        override fun onSeekTo(pos: Long) {
-            AndroidAutoPlugin.sendCommand("seekTo", mapOf("position" to pos))
-        }
+        override fun onSeekTo(pos: Long) =
+            dispatchToFlutter("seekTo", mapOf("position" to pos))
 
         override fun onPlayFromMediaId(mediaId: String?, extras: Bundle?) {
             mediaId?.let {
-                AndroidAutoPlugin.sendCommand("playFromMediaId", mapOf("mediaId" to it))
+                dispatchToFlutter(
+                    "playFromMediaId", mapOf("mediaId" to it), wakeIfDead = true
+                )
             }
         }
 
         override fun onPlayFromSearch(query: String?, extras: Bundle?) {
             val q = query?.trim() ?: ""
-            AndroidAutoPlugin.sendCommand("playFromSearch", mapOf("query" to q))
+            dispatchToFlutter("playFromSearch", mapOf("query" to q), wakeIfDead = true)
         }
     }
 
