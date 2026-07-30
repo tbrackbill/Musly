@@ -138,9 +138,16 @@ class MusicService : MediaBrowserServiceCompat() {
             // the process are gone, so there is nothing left to do and nothing
             // to keep alive — stand down rather than sit in the foreground
             // burning battery until the user next opens the app.
-            Log.d(TAG, "Session registered; standing down")
-            stopForegroundCompat()
-            if (!isPlaying) stopSelf()
+            // Only stand down if nothing is playing. Dropping out of the
+            // foreground mid-playback would remove the media notification and
+            // leave the service killable while audio is still running.
+            if (isPlaying) {
+                Log.d(TAG, "Session registered; playback in progress, staying up")
+            } else {
+                Log.d(TAG, "Session registered; standing down")
+                stopForegroundCompat()
+                stopSelf()
+            }
             return START_NOT_STICKY
         }
 

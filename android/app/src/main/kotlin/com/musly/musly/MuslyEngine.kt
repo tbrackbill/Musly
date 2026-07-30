@@ -51,11 +51,22 @@ object MuslyEngine {
         return engine
     }
 
+    /** Engine whose channels are already wired, so we never register twice. */
+    private var registeredFor: java.lang.ref.WeakReference<FlutterEngine>? = null
+
     /**
-     * Musly's own platform channels. Safe to call more than once on the same
-     * engine — FlutterEngine ignores a plugin class that is already attached.
+     * Musly's own platform channels. Idempotent per engine, which matters:
+     * [engine.plugins.add] ignores an already-attached plugin class, but the
+     * `registerWith` helpers below do not — each call builds a fresh plugin
+     * instance and replaces the channel handler. Registering twice would swap
+     * the lyrics EventChannel's stream handler out from under a Dart
+     * subscription that had already attached to the first one, silently killing
+     * lock-screen lyrics.
      */
     fun registerPlugins(engine: FlutterEngine, context: Context) {
+        if (registeredFor?.get() === engine) return
+        registeredFor = java.lang.ref.WeakReference(engine)
+
         engine.plugins.add(AndroidAutoPlugin)
         engine.plugins.add(AndroidSystemPlugin)
         engine.plugins.add(BluetoothAvrcpPlugin)
