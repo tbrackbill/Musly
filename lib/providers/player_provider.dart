@@ -2901,6 +2901,27 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   String get discordRpcStateStyle => _discordRpcStateStyle;
 
+  /// Copy a remote renderer's reported position/duration into the provider.
+  /// Position updates are debounced by 500ms to ignore poll/timer jitter;
+  /// a zero duration is ignored so a not-yet-loaded track doesn't clobber a
+  /// known duration. Returns true if anything changed. Used by the Cast state
+  /// listener (and safe to reuse for other remote renderers).
+  @visibleForTesting
+  bool syncRemotePosition(Duration devicePosition, Duration deviceDuration) {
+    bool changed = false;
+    if ((_position - devicePosition).abs() >
+        const Duration(milliseconds: 500)) {
+      _position = devicePosition;
+      changed = true;
+    }
+    if (deviceDuration > Duration.zero && deviceDuration != _duration) {
+      _duration = deviceDuration;
+      changed = true;
+    }
+    if (changed) _positionController.add(_position);
+    return changed;
+  }
+
   void _onCastStateChanged() {
     notifyListeners();
     if (_castService.isConnected) {
@@ -2912,17 +2933,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
       // auto-advance breaks). Mirrors what the UPnP poll does.
       if (_isRenderingRemotely) {
         final cast = _castService.mediaState;
-        bool changed = false;
-        if ((_position - cast.position).abs() >
-            const Duration(milliseconds: 500)) {
-          _position = cast.position;
-          changed = true;
-        }
-        if (cast.duration > Duration.zero && cast.duration != _duration) {
-          _duration = cast.duration;
-          changed = true;
-        }
-        if (changed) _positionController.add(_position);
+        syncRemotePosition(cast.position, cast.duration);
       }
 
       // Detect natural track end: Cast stayed connected but stopped playing.

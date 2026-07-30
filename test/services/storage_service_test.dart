@@ -26,5 +26,17 @@ void main() {
       await storageService.saveDiscordRpcEnabled(false);
       expect(await storageService.getDiscordRpcEnabled(), false);
     });
+
+    // Resume-on-Bluetooth-connect setting (default on).
+    test('getResumeOnBluetoothConnect defaults to true', () async {
+      expect(await storageService.getResumeOnBluetoothConnect(), true);
+    });
+
+    test('saveResumeOnBluetoothConnect round-trips both values', () async {
+      await storageService.saveResumeOnBluetoothConnect(false);
+      expect(await storageService.getResumeOnBluetoothConnect(), false);
+      await storageService.saveResumeOnBluetoothConnect(true);
+      expect(await storageService.getResumeOnBluetoothConnect(), true);
+    });
   });
 }
