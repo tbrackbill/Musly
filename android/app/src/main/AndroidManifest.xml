@@ -121,13 +121,18 @@
              head unit's PLAY still has a receiver to reach. Without this, every
              reboot and every app update left the car dead until Musly was next
              opened by hand. See MediaSessionRegistrationReceiver. -->
+        <!-- Deliberately NOT directBootAware, and no LOCKED_BOOT_COMPLETED.
+             MusicService is not direct-boot aware, so before the first unlock
+             the start fails with "Unable to start service ... not found", and
+             the queue and server credentials it would need live in
+             credential-encrypted storage that is unreadable until then anyway.
+             BOOT_COMPLETED arrives right after that first unlock, which is the
+             earliest point registration can actually succeed. -->
         <receiver
             android:name=".MediaSessionRegistrationReceiver"
-            android:exported="true"
-            android:directBootAware="true">
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED"/>
-                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED"/>
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>

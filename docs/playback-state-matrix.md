@@ -37,7 +37,7 @@ renderer — which is why a Bluetooth speaker exercises the same code as a car.
 | S3 | Media button, app backgrounded, screen off | ✓ | ✓ | ✓ | ✓ | **A** |
 | S4 | Media button, process dead, package *not* stopped | ✓ | — | — | — | **A** ← the head-unit bug |
 | S5 | Media button, package **stopped** (force-stop) | ✗ | ✗ | ✗ | ✗ | **A** — unfixable, see below |
-| S6 | Media button after device reboot / app update | ✓ | — | — | — | **A** (update path verified) |
+| S6 | Media button after device reboot / app update | ✓ | — | — | — | **A** ✓both verified end-to-end |
 | S7 | A2DP connect → resume-on-connect | ✓ | n/a² | n/a² | ? | **D** (logic) + **H** (timing) |
 | S8 | Android Auto browse → play | ✓ | ✓ | ✓ | ✓ | **GAP** |
 | S9 | Headless engine start (no UI) | ✓ | ? | ? | ? | **A** (R1 only) — **GAP-2** |
@@ -67,7 +67,7 @@ renderer — which is why a Bluetooth speaker exercises the same code as a car.
 | C3 | Swipe from Recents | process survives (`stopWithTask="false"`) | **A** |
 | C4 | `force-stop` / package stopped flag | **all PendingIntents cancelled — unrecoverable** | **A** (documented) |
 | C5 | Package updated (Obtainium) | `MY_PACKAGE_REPLACED` re-registers the session, service stands down | **A** ✓verified on a real update |
-| C6 | Device reboot | `BOOT_COMPLETED` re-registers the session | **H** (same code path as C5) |
+| C6 | Device reboot | `BOOT_COMPLETED` re-registers the session | **A** ✓verified on a real reboot |
 | C7 | `startForeground` refused in background | was fatal; now caught | **GAP-4** |
 | C8 | Doze / app standby during local playback | FGS + audio keeps app alive | **H** |
 | C9 | Doze during remote (Cast/DLNA) playback | partial wakelock held (`a495233`) | **GAP-5** |

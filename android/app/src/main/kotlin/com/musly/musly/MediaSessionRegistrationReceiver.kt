@@ -18,9 +18,14 @@ import androidx.core.content.ContextCompat
  * receiver existed, every reboot and every Obtainium update left the car dead
  * until the app was next opened by hand.
  *
- * The three actions below are the only ones the platform delivers in those
+ * The actions below are the only ones the platform delivers in those
  * situations:
- *  - ACTION_BOOT_COMPLETED / ACTION_LOCKED_BOOT_COMPLETED after a restart
+ *  - ACTION_BOOT_COMPLETED after a restart, which arrives just after the user's
+ *    first unlock — the earliest point at which registration can succeed, since
+ *    MusicService is not direct-boot aware and the queue and credentials live in
+ *    credential-encrypted storage. (LOCKED_BOOT_COMPLETED is deliberately not
+ *    handled: it fires before that and the service start fails with
+ *    "Unable to start service ... not found".)
  *  - ACTION_MY_PACKAGE_REPLACED to an app that has just been updated, which is
  *    also what lifts it back out of the stopped state
  *
@@ -42,7 +47,6 @@ class MediaSessionRegistrationReceiver : BroadcastReceiver() {
 
         when (intent?.action) {
             Intent.ACTION_BOOT_COMPLETED,
-            Intent.ACTION_LOCKED_BOOT_COMPLETED,
             Intent.ACTION_MY_PACKAGE_REPLACED -> {
                 Log.d(TAG, "Re-registering media session after ${intent.action}")
                 try {
