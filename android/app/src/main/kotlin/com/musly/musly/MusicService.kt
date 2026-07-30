@@ -41,6 +41,8 @@ class MusicService : MediaBrowserServiceCompat() {
         const val ACTION_REGISTER_SESSION = "com.devid.musly.REGISTER_SESSION"
 
         const val MEDIA_ID_ROOT = "ROOT"
+        /** Root the system browses for a resumable item after a reboot. */
+        const val MEDIA_ID_RESUMPTION = "RESUMPTION"
         const val MEDIA_ID_RECENT = "RECENT"
         const val MEDIA_ID_ALBUMS = "ALBUMS"
         const val MEDIA_ID_ARTISTS = "ARTISTS"
@@ -260,10 +262,53 @@ class MusicService : MediaBrowserServiceCompat() {
         clientUid: Int,
         rootHints: Bundle?
     ): BrowserRoot {
+        // Playback resumption probe. After a reboot the system asks the most
+        // recently used media apps for a "recent" root and expects its FIRST
+        // child to be PLAYABLE; it then shows a resume control for that item.
+        // Answering with the normal browse root failed the probe —
+        // "Child found but not playable ... Cannot resume" — because the first
+        // child there is the browsable "Recent" category, so Musly never
+        // appeared in the media carousel after a restart.
+        if (rootHints?.getBoolean(BrowserRoot.EXTRA_RECENT) == true) {
+            return BrowserRoot(
+                MEDIA_ID_RESUMPTION,
+                Bundle().apply { putBoolean(BrowserRoot.EXTRA_RECENT, true) }
+            )
+        }
+
         val extras = Bundle().apply {
             putBoolean("android.media.browse.SEARCH_SUPPORTED", true)
         }
         return BrowserRoot(MEDIA_ID_ROOT, extras)
+    }
+
+    /**
+     * The last track Dart persisted, as a single playable item, or null when
+     * nothing has ever been played. Reads the values PlayerProvider writes
+     * alongside its queue state — see the `_keyResume*` constants there — which
+     * is deliberate: this runs before any Dart exists, and rebuilding an
+     * authenticated cover-art URL natively is not something to duplicate.
+     */
+    private fun resumptionItem(): MediaBrowserCompat.MediaItem? {
+        return try {
+            val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            val songId = prefs.getString("flutter.persistent_queue_song_id", "").orEmpty()
+            if (songId.isEmpty()) return null
+
+            val title = prefs.getString("flutter.resume_title", "").orEmpty()
+            if (title.isEmpty()) return null
+
+            createPlayableMediaItem(
+                songId,
+                title,
+                prefs.getString("flutter.resume_artist", "").orEmpty(),
+                prefs.getString("flutter.resume_album", "").orEmpty(),
+                prefs.getString("flutter.resume_artwork_url", "").orEmpty()
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not build resumption item: ${e.message}")
+            null
+        }
     }
 
     override fun onSearch(
@@ -297,8 +342,18 @@ class MusicService : MediaBrowserServiceCompat() {
         parentId: String,
         result: Result<MutableList<MediaBrowserCompat.MediaItem>>
     ) {
+        // Answered synchronously and without touching the network: the system
+        // probes this on boot and gives up quickly, and the library caches that
+        // the other branches wait on are empty until Dart is running.
+        if (parentId == MEDIA_ID_RESUMPTION) {
+            val item = resumptionItem()
+            Log.d(TAG, "Resumption probe -> ${item?.description?.title ?: "nothing to resume"}")
+            result.sendResult(item?.let { mutableListOf(it) } ?: mutableListOf())
+            return
+        }
+
         result.detach()
-        
+
         serviceScope.launch {
             val items = when (parentId) {
                 MEDIA_ID_ROOT -> getRootItems()

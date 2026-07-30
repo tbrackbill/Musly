@@ -96,6 +96,12 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
   static const String _keyQueueIndex = 'persistent_queue_index';
   static const String _keyQueueSongId = 'persistent_queue_song_id';
   static const String _keyQueuePosition = 'persistent_queue_position_ms';
+  // Read from Kotlin (MusicService) to answer the system's playback-resumption
+  // probe after a reboot, before any Dart is running. Keep the names in sync.
+  static const String _keyResumeTitle = 'resume_title';
+  static const String _keyResumeArtist = 'resume_artist';
+  static const String _keyResumeAlbum = 'resume_album';
+  static const String _keyResumeArtwork = 'resume_artwork_url';
 
   final bool _reactivatingSession = false;
 
@@ -202,10 +208,32 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
       _prefs ??= await SharedPreferences.getInstance();
       if (_prefs == null) return;
       final queueJson = _queue.map((s) => s.toJson()).toList();
+      final songId = _currentSong?.id ?? '';
+      final songChanged = _prefs!.getString(_keyQueueSongId) != songId;
+
       await _prefs!.setString(_keyQueue, jsonEncode(queueJson));
       await _prefs!.setInt(_keyQueueIndex, _currentIndex);
-      await _prefs!.setString(_keyQueueSongId, _currentSong?.id ?? '');
+      await _prefs!.setString(_keyQueueSongId, songId);
       await _prefs!.setInt(_keyQueuePosition, _position.inMilliseconds);
+
+      // Denormalised copy of the current track for MusicService's playback
+      // resumption root. Kotlin has to answer the system's resumption probe
+      // before any Dart is running, and it cannot rebuild an authenticated
+      // cover-art URL on its own, so the resolved values are written here
+      // rather than parsed back out of the queue JSON.
+      await _prefs!.setString(_keyResumeTitle, _currentSong?.title ?? '');
+      await _prefs!.setString(_keyResumeArtist, _currentSong?.artist ?? '');
+      await _prefs!.setString(_keyResumeAlbum, _currentSong?.album ?? '');
+
+      // _resolvedArtworkUrl is filled in asynchronously, so the first few saves
+      // after a track change have nothing yet. Write through only when we have
+      // a URL, or when the track itself changed — otherwise a save one tick
+      // after a skip would wipe artwork that had already resolved.
+      final resumeArtwork =
+          _currentSong == null ? '' : (_resolveArtworkUrl() ?? '');
+      if (resumeArtwork.isNotEmpty || songChanged) {
+        await _prefs!.setString(_keyResumeArtwork, resumeArtwork);
+      }
       debugPrint(
           'Queue state saved: index $_currentIndex, position $_position');
     } catch (e) {
@@ -254,6 +282,14 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
       if (songDurationSecs != null && songDurationSecs > 0) {
         _duration = Duration(seconds: songDurationSecs);
       }
+      // Resolve artwork for the restored track. _refreshArtworkUrl() otherwise
+      // only runs from playSong(), so after a restart the lock screen, Android
+      // Auto and the playback-resumption record all sat without art until the
+      // user happened to change track.
+      _refreshArtworkUrl().catchError((Object e) {
+        debugPrint('Error resolving artwork after restore: $e');
+      });
+
       notifyListeners();
       debugPrint(
           'Restored persistent queue: ${restoredSongs.length} songs, index $targetIndex, position $_position');
@@ -857,6 +893,20 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     return _resolvedArtworkUrl;
   }
 
+  /// Persist just the resumption artwork URL. Artwork resolves asynchronously,
+  /// always after the queue-state save that would otherwise have recorded it,
+  /// so the resumption chip the system shows after a reboot would have no art.
+  Future<void> _persistResumeArtwork() async {
+    try {
+      final url = _resolveArtworkUrl();
+      if (url == null || url.isEmpty) return;
+      _prefs ??= await SharedPreferences.getInstance();
+      await _prefs?.setString(_keyResumeArtwork, url);
+    } catch (e) {
+      debugPrint('Error persisting resume artwork: $e');
+    }
+  }
+
   Future<void> _refreshArtworkUrl() async {
     final song = _currentSong;
     if (song == null || song.coverArt == null) {
@@ -874,7 +924,10 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
         _offlineService.getLocalCoverArtPathByCoverArtId(song.coverArt);
     if (localPath != null) {
       _resolvedArtworkUrl = Uri.file(localPath).toString();
-      if (_currentSong?.id == song.id) _updateAllServices();
+      if (_currentSong?.id == song.id) {
+        _updateAllServices();
+        _persistResumeArtwork();
+      }
       return;
     }
 
@@ -889,6 +942,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
             if (_currentSong?.id == song.id) {
               _resolvedArtworkUrl = Uri.file(fileInfo.file.path).toString();
               _updateAllServices();
+              _persistResumeArtwork();
             }
             return;
           }
@@ -900,7 +954,10 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
 
     if (!_offlineService.isOfflineMode) {
       _resolvedArtworkUrl = serverUrl;
-      if (_currentSong?.id == song.id) _updateAllServices();
+      if (_currentSong?.id == song.id) {
+        _updateAllServices();
+        _persistResumeArtwork();
+      }
     }
   }
 

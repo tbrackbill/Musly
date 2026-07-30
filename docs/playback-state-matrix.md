@@ -41,6 +41,7 @@ renderer — which is why a Bluetooth speaker exercises the same code as a car.
 | S7 | A2DP connect → resume-on-connect | ✓ | n/a² | n/a² | ? | **D** (logic) + **H** (timing) |
 | S8 | Android Auto browse → play | ✓ | ✓ | ✓ | ✓ | **GAP** |
 | S9 | Headless engine start (no UI) | ✓ | ? | ? | ? | **A** (R1 only) — **GAP-2** |
+| S10 | System playback-resumption control after reboot | ✓ | — | — | — | **A** (`DEBUG_RESUMPTION_PROBE`) |
 
 ² resume-on-connect is explicitly skipped while `_isRenderingRemotely`.
 

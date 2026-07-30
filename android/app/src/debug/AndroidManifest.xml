@@ -16,6 +16,7 @@
             <intent-filter>
                 <action android:name="com.devid.musly.DEBUG_BT_CONNECT"/>
                 <action android:name="com.devid.musly.DEBUG_BT_STATUS"/>
+                <action android:name="com.devid.musly.DEBUG_RESUMPTION_PROBE"/>
             </intent-filter>
         </receiver>
     </application>
