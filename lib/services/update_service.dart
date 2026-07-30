@@ -45,7 +45,10 @@ class ReleaseInfo {
 }
 
 class UpdateService {
-  static const String currentVersion = '1.0.13';
+  // Keep in sync with the versionName in pubspec.yaml. Compared against the
+  // latest UPSTREAM release (see _apiUrl), so leaving it behind makes the app
+  // offer an "update" to a version it is already running.
+  static const String currentVersion = '1.0.14';
 
   static const String _apiUrl =
       'https://api.github.com/repos/dddevid/Musly/releases/latest';
