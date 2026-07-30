@@ -2901,6 +2901,16 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   String get discordRpcStateStyle => _discordRpcStateStyle;
 
+  /// Test seam for the remote-rendering guards. `_isRenderingRemotely` is
+  /// otherwise only set deep inside playSong(), which needs a configured
+  /// server, so without this the audio-focus and becoming-noisy guards
+  /// (the ones that stop Android pausing a Cast/DLNA renderer at screen-off)
+  /// cannot be exercised without hardware.
+  @visibleForTesting
+  void setRenderingRemotelyForTest(bool value) {
+    _isRenderingRemotely = value;
+  }
+
   /// Copy a remote renderer's reported position/duration into the provider.
   /// Position updates are debounced by 500ms to ignore poll/timer jitter;
   /// a zero duration is ignored so a not-yet-loaded track doesn't clobber a
