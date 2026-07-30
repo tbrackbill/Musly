@@ -34,7 +34,17 @@ class BluetoothMediaHelper(private val context: Context) {
     
     companion object {
         private const val TAG = "BluetoothMediaHelper"
-        
+
+        /**
+         * The helper belonging to the currently attached Flutter engine, or null
+         * when no engine is attached (app swiped away / never launched). The BT
+         * receiver lives on this instance, so a null here means Bluetooth connect
+         * events are reaching nobody. Used by the debug-only test receiver.
+         */
+        @Volatile
+        var activeInstance: BluetoothMediaHelper? = null
+            private set
+
         const val AVRCP_VERSION_1_0 = 10
         const val AVRCP_VERSION_1_3 = 13
         const val AVRCP_VERSION_1_4 = 14
@@ -130,7 +140,8 @@ class BluetoothMediaHelper(private val context: Context) {
             }
             
             bluetoothAdapter?.getProfileProxy(context, a2dpListener, BluetoothProfile.A2DP)
-            
+
+            activeInstance = this
             Log.d(TAG, "BluetoothMediaHelper initialized")
         } catch (e: Exception) {
             Log.e(TAG, "Error initializing BluetoothMediaHelper: ${e.message}")
@@ -354,12 +365,14 @@ class BluetoothMediaHelper(private val context: Context) {
     }
     
     fun dispose() {
+        if (activeInstance === this) activeInstance = null
+
         try {
             context.unregisterReceiver(bluetoothReceiver)
         } catch (e: Exception) {
             Log.e(TAG, "Error unregistering receiver: ${e.message}")
         }
-        
+
         bluetoothAdapter?.closeProfileProxy(BluetoothProfile.A2DP, a2dpProxy)
         a2dpProxy = null
         scope.cancel()
@@ -428,6 +441,61 @@ class BluetoothMediaHelper(private val context: Context) {
             else -> result.notImplemented()
         }
     }
+
+    // ── Test hooks ────────────────────────────────────────────────────────────
+    // Driven from adb by the debug-only DebugBluetoothReceiver so the
+    // resume-on-connect path can be exercised without a car (or any A2DP
+    // hardware). Both are hard no-ops in a non-debuggable build.
+
+    private fun isDebuggable(): Boolean =
+        (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+
+    /**
+     * Emit the same "deviceConnected" event the real ACL_CONNECTED receiver
+     * emits, bypassing the A2DP proxy lookup. [forceA2dpActive] also flips the
+     * gate that isA2dpConnected() reads, since a synthetic device never appears
+     * in the profile proxy's connected list.
+     */
+    fun debugSimulateDeviceConnected(
+        address: String,
+        name: String,
+        forceA2dpActive: Boolean
+    ): Boolean {
+        if (!isDebuggable()) {
+            Log.w(TAG, "debugSimulateDeviceConnected ignored: build is not debuggable")
+            return false
+        }
+
+        val info = BluetoothDeviceInfo(
+            address = address,
+            name = name,
+            isConnected = true,
+            supportsAvrcp = true,
+            avrcpVersion = AVRCP_VERSION_1_5,
+            supportsAlbumArt = true,
+            supportsBrowsing = false
+        )
+
+        if (forceA2dpActive) {
+            isA2dpConnected = true
+            if (connectedDevices.none { it.address == address }) {
+                connectedDevices.add(info)
+            }
+        }
+
+        Log.d(TAG, "DEBUG_BT simulating deviceConnected: $name ($address), " +
+            "a2dpGate=${isA2dpConnected()}")
+        sendEvent("deviceConnected", mapOf("device" to info.toMap()))
+        return true
+    }
+
+    /** One-line snapshot of every gate the resume-on-connect path depends on. */
+    fun debugStateSummary(): String =
+        "engineAttached=true a2dpFlag=$isA2dpConnected " +
+            "connectedDevices=${connectedDevices.size} " +
+            "a2dpProxy=${if (a2dpProxy != null) "up" else "null"} " +
+            "eventSink=${if (eventSink != null) "listening" else "null"} " +
+            "isA2dpConnected()=${isA2dpConnected()}"
 }
 
 /**

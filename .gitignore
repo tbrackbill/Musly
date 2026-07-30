@@ -49,3 +49,6 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Bluetooth head-unit test harness output
+/tools/bt-test-results/

@@ -4,4 +4,19 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+
+    <application>
+        <!-- Debug-only test hook for tools/bt_headunit_test.sh. Lets adb drive
+             the Bluetooth resume-on-connect path without a car or any A2DP
+             hardware. Exported so `adb shell am broadcast` (shell uid) can
+             reach it; compiled into debug builds only. -->
+        <receiver
+            android:name=".DebugBluetoothReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.devid.musly.DEBUG_BT_CONNECT"/>
+                <action android:name="com.devid.musly.DEBUG_BT_STATUS"/>
+            </intent-filter>
+        </receiver>
+    </application>
 </manifest>

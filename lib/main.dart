@@ -241,6 +241,12 @@ void main() async {
       ChangeNotifierProvider<UpnpService>.value(value: upnpService),
       ChangeNotifierProvider<JukeboxService>.value(value: jukeboxService),
       ChangeNotifierProvider(
+        // Eager: when a car head unit wakes Musly from cold, MusicService runs
+        // the engine headlessly and no widget ever reads this provider, so a
+        // lazy one would never be built — the player would not exist to receive
+        // the pending PLAY. It also wires up the media session, Bluetooth and
+        // Android Auto listeners, none of which should wait for a UI read.
+        lazy: false,
         create: (_) => PlayerProvider(
           subsonicService,
           storageService,

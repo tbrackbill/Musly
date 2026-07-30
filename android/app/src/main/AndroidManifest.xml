@@ -91,6 +91,15 @@
             <intent-filter>
                 <action android:name="android.media.browse.MediaBrowserService"/>
             </intent-filter>
+            <!-- Lets androidx MediaButtonReceiver hand a media button straight to
+                 this service via startForegroundService() when our process is
+                 dead. Without it the receiver falls back to binding the media
+                 browser, which is slower and leaves the session unstarted. The
+                 FGS start is permitted by the temporary allowlist the framework
+                 grants when dispatching a media button. -->
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON"/>
+            </intent-filter>
             <meta-data
                 android:name="android.media.browse.SEARCH_SUPPORTED"
                 android:value="true"/>

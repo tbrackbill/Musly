@@ -105,7 +105,18 @@ class MusicService : MediaBrowserServiceCompat() {
         createNotificationChannel()
         initializeMediaSession()
 
-        showIdleNotification()
+        // MUST NOT be allowed to throw. On Android 12+ startForeground() raises
+        // ForegroundServiceStartNotAllowedException whenever this service is
+        // created from the background without an FGS exemption, and an
+        // exception out of onCreate takes the entire process down — which is
+        // how Musly kept disappearing in the background. Failing to go
+        // foreground is survivable: the media session is registered above, so
+        // media buttons still work, and the next playback start promotes us.
+        try {
+            showIdleNotification()
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not enter foreground on create: ${e.message}")
+        }
 
         AndroidAutoPlugin.flushPendingLibraryData()
         
@@ -168,9 +179,22 @@ class MusicService : MediaBrowserServiceCompat() {
     private fun initializeMediaSession() {
         val mediaButtonIntent = Intent(Intent.ACTION_MEDIA_BUTTON)
         mediaButtonIntent.setClass(this, MediaButtonReceiver::class.java)
+        // This PendingIntent MUST be mutable. When our process is dead the
+        // framework stops delivering keys to the session callback and instead
+        // calls pendingIntent.send(context, code, intentCarryingTheKeyEvent) —
+        // an immutable PendingIntent silently drops those supplied extras, so
+        // MediaButtonReceiver sees no EXTRA_KEY_EVENT and logs
+        // "Ignore unsupported intent". That is why a car head unit's PLAY did
+        // nothing once Musly had been closed. androidx builds this same
+        // PendingIntent with FLAG_MUTABLE for exactly this reason.
+        val mutabilityFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            PendingIntent.FLAG_MUTABLE
+        } else {
+            0
+        }
         val pendingIntent = PendingIntent.getBroadcast(
             this, 0, mediaButtonIntent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            mutabilityFlag or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
         mediaSession = MediaSessionCompat(this, "MuslyMusicService").apply {
@@ -847,10 +871,16 @@ class MusicService : MediaBrowserServiceCompat() {
             )
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(NOTIFICATION_ID, builder.build(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
-        } else {
-            startForeground(NOTIFICATION_ID, builder.build())
+        // Same hazard as onCreate: a background startForeground() throws on
+        // Android 12+ and would otherwise kill the process mid-playback-update.
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(NOTIFICATION_ID, builder.build(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+            } else {
+                startForeground(NOTIFICATION_ID, builder.build())
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not enter foreground for playback notification: ${e.message}")
         }
     }
 
@@ -859,14 +889,16 @@ class MusicService : MediaBrowserServiceCompat() {
             if (AndroidAutoPlugin.isFlutterConnected) {
                 AndroidAutoPlugin.sendCommand("play", null)
             } else {
-                // Flutter engine not connected (cold start or OS kill).
-                // Launch the app — once the Flutter engine attaches and subscribes to
-                // the event channel, AndroidAutoPlugin will flush the pending "play".
+                // Flutter engine not connected (cold start or OS kill). Starting
+                // MainActivity here does NOT work: Android refuses it with
+                // "Background activity launch blocked", so the command was never
+                // delivered and a head unit's PLAY did nothing. Bring Dart up
+                // headlessly instead — no UI required to play audio.
+                // AndroidAutoPlugin flushes the pending command once the engine
+                // subscribes to the event channel.
+                Log.d(TAG, "onPlay with no Flutter engine — starting headless engine")
                 AndroidAutoPlugin.pendingCommand = "play"
-                val intent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                }
-                if (intent != null) startActivity(intent)
+                MuslyEngine.getOrCreate(applicationContext)
             }
         }
 
