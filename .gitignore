@@ -52,3 +52,8 @@ app.*.map.json
 
 # Bluetooth head-unit test harness output
 /tools/bt-test-results/
+
+# Built APKs. Release artefacts belong on the GitHub release, not in the repo —
+# they are ~67MB each and would bloat history permanently.
+*.apk
+*.aab
