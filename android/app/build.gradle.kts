@@ -8,7 +8,6 @@ plugins {
 import java.util.Properties
 import java.io.FileInputStream
 
-// Load keystore properties from key.properties if it exists
 val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("key.properties")
 
@@ -42,7 +41,6 @@ android {
         }
     }
 
-    // Configure signing with custom keystore or debug fallback
     signingConfigs {
         create("release") {
             if (keystorePropertiesFile.exists()) {

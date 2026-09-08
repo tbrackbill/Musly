@@ -1,54 +1,15 @@
-# Miscellaneous
-*.class
-*.log
-*.pyc
-*.swp
-.DS_Store
-.atom/
-.build/
-.buildlog/
-.history
-.svn/
-.swiftpm/
-migrate_working_dir/
-musly-1.0.4-setup.exe
-.claude/
-/discord_sdk_temp
-# lib/services/analytics_service.dart
-.env
-test_server_config.json
-
-# IntelliJ related
-*.iml
-*.ipr
-*.iws
-.idea/
-
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
-
-# Flutter/Dart/Pub related
-**/doc/api/
-**/ios/Flutter/.last_build_id
-.dart_tool/
-.flutter-plugins-dependencies
-.pub-cache/
-.pub/
-/build/
-/coverage/
-
 # Symbolication related
 app.*.symbols
 
 # Obfuscation related
 app.*.map.json
 
-# Android Studio will place build artifacts here
+# Android build artifacts
 /android/app/debug
 /android/app/profile
 /android/app/release
+/android/build/
+/android/*.hprof
 
 # Fastlane
 **/fastlane/report.xml
@@ -56,5 +17,30 @@ app.*.map.json
 **/fastlane/screenshots
 **/fastlane/test_output
 **/fastlane/README.md
+
+# Flutter generated localizations (regenerated from arb files)
+lib/l10n/*_localizations.dart
+lib/l10n/l10n.dart
+
+# Build/intermediate files
+/build/
+/coverage/
+.dart_tool/
+.pub-cache/
+.pub/
+.flutter-plugins-dependencies
+
+# IDE
+.claude/
+.vscode/
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# Misc
 .bundle/
 vendor/bundle/
+.env
+test_server_config.json
+android/java_pid*.hprof
