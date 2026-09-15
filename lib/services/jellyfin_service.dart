@@ -477,7 +477,7 @@ class JellyfinService {
       }).toList();
     } catch (e) {
       debugPrint('[Jellyfin] getPlaylists error: $e');
-      return [];
+      rethrow;
     }
   }
 
@@ -504,7 +504,7 @@ class JellyfinService {
       );
     } catch (e) {
       debugPrint('[Jellyfin] getPlaylist error: $e');
-      return Playlist(id: id, name: '');
+      rethrow;
     }
   }
 

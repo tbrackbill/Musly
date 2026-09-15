@@ -794,7 +794,9 @@ class LibraryProvider extends ChangeNotifier {
     }
 
     try {
-      final playlist = await _subsonicService.getPlaylist(playlistId);
+      final playlist = await _subsonicService
+          .getPlaylist(playlistId)
+          .timeout(const Duration(seconds: 3));
       final index = _playlists.indexWhere((p) => p.id == playlistId);
       if (index != -1) {
         _playlists[index] = playlist;

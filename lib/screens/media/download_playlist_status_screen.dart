@@ -56,8 +56,8 @@ class DownloadPlaylistStatusScreen extends StatelessWidget {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: playlist.coverArt != null
-                      ? AlbumArtwork(
-                          coverArt: playlist.coverArt,
+                      ? PlaylistArtwork(
+                          playlist: playlist,
                           size: 48,
                           borderRadius: 8,
                         )

@@ -212,6 +212,8 @@ class AlbumArtwork extends StatelessWidget {
       }
     }
 
+    if (OfflineService().isOfflineMode) return _buildPlaceholder(isDark);
+
     return Builder(
       builder: (context) {
         final imageUrl = _ImageUrlCache.getUrl(
@@ -270,6 +272,8 @@ class AlbumArtwork extends StatelessWidget {
         );
       }
     }
+
+    if (OfflineService().isOfflineMode) return _buildPlaceholder(isDark);
 
     return Builder(
       builder: (context) {
