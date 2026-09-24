@@ -92,6 +92,15 @@ class AuthProvider extends ChangeNotifier {
       offlineService.flushPendingScrobbles(_subsonicService).catchError(
             (e) => debugPrint('Error flushing pending scrobbles: $e'),
           );
+      // Playlists that already finished downloading are never looked at again,
+      // so tracks added to them since would not download. This has to wait for
+      // a verified connection: at app start the server is not configured yet.
+      offlineService.reconcileDownloadedPlaylists(_subsonicService).catchError(
+        (e) {
+          debugPrint('Error reconciling downloaded playlists: $e');
+          return <String>{};
+        },
+      );
     } else {
       final offlineService = OfflineService();
       await offlineService.initialize();
