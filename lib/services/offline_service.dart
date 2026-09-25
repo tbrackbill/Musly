@@ -68,6 +68,35 @@ class OfflineService {
   bool get isOfflineMode => _offlineMode;
   void setOfflineMode(bool value) => _offlineMode = value;
 
+  /// Drop all in-memory state so one test cannot observe another's leftovers.
+  ///
+  /// This is a singleton, so a test cannot get a fresh instance, and resetting
+  /// only the ValueNotifiers is not enough: `initialize()` rebuilds
+  /// `_queuedPlaylistData` from prefs only when the key is present, so an
+  /// in-memory queue survives an apparently clean setUp. Touches no prefs and
+  /// no files — unlike [deleteAllDownloads], which clears the same fields but
+  /// also erases the user's downloads.
+  @visibleForTesting
+  void resetForTests() {
+    // Tests replace the SharedPreferences store with setMockInitialValues;
+    // a cached instance would keep reading the previous one.
+    _prefs = null;
+    _offlineMode = false;
+    _expectedSizes = {};
+    _queuedPlaylistData = {};
+    _playlistServers = {};
+    _reconcileInFlight = null;
+    _downloadQueue.clear();
+    _queueProcessorRunning = false;
+    _activePlaylistId = null;
+    _isBackgroundDownloadActive = false;
+    queuedPlaylistIds.value = {};
+    downloadedPlaylistIds.value = {};
+    downloadedSongIds.value = {};
+    downloadState.value = DownloadState();
+    downloadLog.value = [];
+  }
+
   final ValueNotifier<DownloadState> downloadState = ValueNotifier(
     DownloadState(),
   );
@@ -84,10 +113,12 @@ class OfflineService {
   static const String _keyQueuedPlaylists = 'offline_queued_playlists';
   static const String _keyQueuedPlaylistData = 'offline_queued_playlist_data';
   static const String _keyDownloadedPlaylists = 'offline_downloaded_playlists';
+  static const String _keyPlaylistServers = 'offline_playlist_servers';
   static const String _keyParallelDownloads = 'parallel_downloads_count';
   static const String _keyKeepScreenOn = 'offline_keep_screen_on';
   static const String _keyCustomDownloadPath = 'offline_custom_download_path';
-  static const String _keyAutoDownloadFavorites = 'offline_auto_download_favorites';
+  static const String _keyAutoDownloadFavorites =
+      'offline_auto_download_favorites';
 
   static const int _defaultParallelDownloads = 3;
   static const int _maxParallelDownloads = 5;
@@ -99,6 +130,13 @@ class OfflineService {
   final ValueNotifier<Set<String>> downloadedPlaylistIds = ValueNotifier({});
 
   Map<String, List<Map<String, dynamic>>> _queuedPlaylistData = {};
+
+  /// Which server each downloaded playlist came from. Playlist ids are only
+  /// unique per server, so reconciling one server's playlist against another
+  /// could fetch an unrelated playlist that happens to share the id.
+  Map<String, String> _playlistServers = {};
+
+  Future<Set<String>>? _reconcileInFlight;
 
   final List<({String playlistId, List<Song> songs, SubsonicService service})>
       _downloadQueue = [];
@@ -186,6 +224,14 @@ class OfflineService {
         _prefs?.getStringList(_keyDownloadedPlaylists) ?? [];
     downloadedPlaylistIds.value = downloadedPlaylistList.toSet();
 
+    final serversJson = _prefs?.getString(_keyPlaylistServers);
+    if (serversJson != null) {
+      try {
+        final raw = json.decode(serversJson) as Map<String, dynamic>;
+        _playlistServers = raw.map((k, v) => MapEntry(k, v as String));
+      } catch (_) {}
+    }
+
     await _checkAndUnmarkCompleted(merged);
   }
 
@@ -219,6 +265,9 @@ class OfflineService {
     SubsonicService subsonicService,
   ) async {
     if (_offlineDir == null) await initialize();
+
+    final server = _serverKey(subsonicService);
+    if (server != null) await _setPlaylistServer(playlistId, server);
 
     _queuedPlaylistData[playlistId] = songs.map((s) => s.toJson()).toList();
     queuedPlaylistIds.value = {...queuedPlaylistIds.value, playlistId};
@@ -291,6 +340,111 @@ class OfflineService {
           (playlistId: entry.key, songs: missing, service: subsonicService));
     }
     if (_downloadQueue.isNotEmpty) _startQueueProcessor();
+  }
+
+  /// Re-check playlists already marked downloaded against the server.
+  ///
+  /// [_processQueue] drops a playlist's track manifest once it completes, and
+  /// [resumeIncompleteDownloads] only walks playlists still in the queue. A
+  /// completed playlist was therefore never examined again: adding a track to
+  /// a playlist you had already downloaded never downloaded that track, and
+  /// [downloadedPlaylistIds] went on claiming the playlist was complete no
+  /// matter how far it had drifted from the server.
+  ///
+  /// Runs sequentially and skips itself entirely when offline, so it cannot
+  /// stampede the server on launch. It still costs one getPlaylist request per
+  /// downloaded playlist on every verified connection. A call made while one
+  /// is already running joins it rather than queueing duplicate downloads.
+  ///
+  /// Only adds: a track removed from the playlist server-side stays on disk,
+  /// since it may belong to another downloaded playlist too.
+  ///
+  /// Returns the playlists it re-queued.
+  Future<Set<String>> reconcileDownloadedPlaylists(
+      SubsonicService subsonicService) {
+    return _reconcileInFlight ??= _reconcile(subsonicService)
+        .whenComplete(() => _reconcileInFlight = null);
+  }
+
+  Future<Set<String>> _reconcile(SubsonicService subsonicService) async {
+    final requeued = <String>{};
+    if (_offlineMode) return requeued;
+    if (_offlineDir == null) await initialize();
+    final server = _serverKey(subsonicService);
+    if (server == null) return requeued;
+
+    for (final playlistId in downloadedPlaylistIds.value.toList()) {
+      // Playlist ids are only unique per server. A playlist downloaded from
+      // another profile must not be looked up here, or a colliding id would
+      // download someone else's playlist into this one.
+      final owner = _playlistServers[playlistId];
+      if (owner != null && owner != server) continue;
+
+      try {
+        final playlist = await subsonicService.getPlaylist(playlistId);
+
+        // The service is shared, so a profile switch during the await points
+        // it at a different server. Stop; the switch reconciles on its own.
+        if (_serverKey(subsonicService) != server) break;
+
+        // Re-check membership after the await. getPlaylist can sit for the
+        // full connect+receive timeout, and the user may have tapped "remove
+        // download" in the meantime — cancelPlaylistDownload drops the id from
+        // downloadedPlaylistIds. Acting on the stale snapshot would silently
+        // resurrect the download the user just cancelled.
+        if (!downloadedPlaylistIds.value.contains(playlistId)) {
+          debugPrint('Offline: playlist $playlistId was removed while we were '
+              'checking it — leaving it alone');
+          continue;
+        }
+
+        final songs = playlist.songs ?? const <Song>[];
+        // An empty result is far more likely to be a transport hiccup than a
+        // playlist that lost every track, and acting on it would delete the
+        // user's downloads. Leave it alone.
+        if (songs.isEmpty) continue;
+
+        if (owner == null) {
+          // Downloaded before owners were recorded. Only claim it if this
+          // server's playlist shares a track with what is on disk; an
+          // unrelated playlist that merely shares the id will not.
+          if (!songs.any((s) => isSongDownloaded(s.id))) continue;
+          await _setPlaylistServer(playlistId, server);
+        }
+
+        final missing = songs.where((s) => !isSongDownloaded(s.id)).toList();
+        if (missing.isEmpty) continue;
+
+        debugPrint('Offline: playlist $playlistId has ${missing.length} '
+            'track(s) that are not downloaded — re-queueing');
+
+        // It is no longer complete, so stop claiming it is until the queue
+        // says otherwise.
+        downloadedPlaylistIds.value =
+            downloadedPlaylistIds.value.difference({playlistId});
+        await _prefs?.setStringList(
+            _keyDownloadedPlaylists, downloadedPlaylistIds.value.toList());
+
+        requeued.add(playlistId);
+        await queuePlaylistDownload(playlistId, songs, subsonicService);
+      } catch (e) {
+        // One unreachable playlist must not stop the others being checked.
+        debugPrint('Offline: reconcile failed for playlist $playlistId: $e');
+      }
+    }
+    return requeued;
+  }
+
+  static String? _serverKey(SubsonicService subsonicService) {
+    final config = subsonicService.config;
+    if (config == null || !config.isValid) return null;
+    return '${config.serverFamily}|${config.normalizedUrl}|${config.username}';
+  }
+
+  Future<void> _setPlaylistServer(String playlistId, String server) async {
+    if (_playlistServers[playlistId] == server) return;
+    _playlistServers[playlistId] = server;
+    await _prefs?.setString(_keyPlaylistServers, json.encode(_playlistServers));
   }
 
   bool _isFileValid(String songId, File file) {
@@ -541,7 +695,8 @@ class OfflineService {
     await _prefs?.setBool(_keyAutoDownloadFavorites, value);
   }
 
-  Future<void> autoDownloadIfEnabled(Song song, SubsonicService subsonicService, dynamic libraryProvider) async {
+  Future<void> autoDownloadIfEnabled(Song song, SubsonicService subsonicService,
+      dynamic libraryProvider) async {
     if (getAutoDownloadFavorites()) {
       if (libraryProvider != null) {
         libraryProvider.cacheSongLocally(song);
@@ -777,8 +932,10 @@ class OfflineService {
       await _prefs?.remove(_keyQueuedPlaylists);
       await _prefs?.remove(_keyQueuedPlaylistData);
       await _prefs?.remove(_keyDownloadedPlaylists);
+      await _prefs?.remove(_keyPlaylistServers);
       _expectedSizes = {};
       _queuedPlaylistData = {};
+      _playlistServers = {};
       _downloadQueue.clear();
       queuedPlaylistIds.value = {};
       downloadedPlaylistIds.value = {};
