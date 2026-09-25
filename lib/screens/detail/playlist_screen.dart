@@ -88,6 +88,9 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
         _updateDownloadState();
       }
       if (playlist.songs != null && playlist.songs!.isNotEmpty) {
+        // Tracks added to a playlist after it was downloaded would otherwise
+        // never download. Opening it is when the current track list is known.
+        _topUpDownload(playlist.songs!, subsonicService);
         PlaylistCoverService().checkAndGenerateCover(
           playlistId: widget.playlistId,
           songs: playlist.songs!,
@@ -333,6 +336,19 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
           duration: const Duration(seconds: 2),
         ),
       );
+    }
+  }
+
+  Future<void> _topUpDownload(
+      List<Song> songs, SubsonicService subsonicService) async {
+    final libraryProvider =
+        Provider.of<LibraryProvider>(context, listen: false);
+    try {
+      final queued = await OfflineService()
+          .topUpDownloadedPlaylist(widget.playlistId, songs, subsonicService);
+      if (queued) libraryProvider.cacheSongsLocally(songs);
+    } catch (e) {
+      debugPrint('Error topping up playlist download: $e');
     }
   }
 
