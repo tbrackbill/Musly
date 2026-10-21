@@ -12,7 +12,8 @@ import 'package:flutter/widgets.dart';
 /// While the route holding the nested navigator isn't current, every page in
 /// the nested navigator reports that it can't pop. Flutter then treats the
 /// swipe like the back button, which the root navigator gives to its top
-/// route.
+/// route. While covered, `maybePop` on the nested navigator also does nothing;
+/// `pop` and `popUntil` are unaffected.
 ///
 /// Add the guard to the nested navigator's observers. Navigators for
 /// alternative layouts that share one key can share one guard, since only one
@@ -83,6 +84,14 @@ class _CoveredBackGestureScopeState extends State<CoveredBackGestureScope> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     widget.guard._canPop.route = ModalRoute.of(context);
+  }
+
+  @override
+  void didUpdateWidget(CoveredBackGestureScope oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.guard != widget.guard) {
+      widget.guard._canPop.route = ModalRoute.of(context);
+    }
   }
 
   @override

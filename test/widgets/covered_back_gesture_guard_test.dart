@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:musly/widgets/navigation/covered_back_gesture_scope.dart';
+import 'package:musly/widgets/navigation/covered_back_gesture_guard.dart';
 
 final _root = GlobalKey<NavigatorState>();
 final _inner = GlobalKey<NavigatorState>();
@@ -304,6 +304,27 @@ void main() {
     await _openNowPlaying(tester);
     await _swipeBack(tester);
     expect(_shellBuilds, builds);
+  });
+
+  testWidgets('a scope handed a new guard points it at the route at once',
+      (tester) async {
+    await _pumpShell(tester);
+    _guard = CoveredBackGestureGuard();
+    addTearDown(_guard.dispose);
+    // ignore: prefer_const_constructors
+    await tester.pumpWidget(MaterialApp(
+      navigatorKey: _root,
+      home: _Shell(guarded: true), // a new instance, so the scope updates
+    ));
+    await _openPage(tester, 'album');
+    showModalBottomSheet<void>(
+      context: _root.currentContext!,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      builder: (_) => const SizedBox.expand(child: Text('now playing')),
+    );
+    await _swipeBack(tester); // same frame: no dependency change yet
+    expect(_visible(), ['album']);
   });
 
   testWidgets('lets go of pages once they are popped', (tester) async {
