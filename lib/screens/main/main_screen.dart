@@ -10,7 +10,6 @@ import 'package:musly/services/recommendation_service.dart';
 import 'package:musly/services/theme_service.dart';
 import 'package:musly/services/usage_time_service.dart';
 import 'package:musly/theme/app_theme.dart';
-import 'package:musly/utils/covered_back_gesture_guard.dart';
 import 'package:musly/utils/navigation_helper.dart';
 import 'package:musly/widgets/widgets.dart';
 import 'package:musly/l10n/app_localizations.dart';

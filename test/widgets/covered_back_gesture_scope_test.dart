@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:musly/utils/covered_back_gesture_guard.dart';
+import 'package:musly/widgets/navigation/covered_back_gesture_scope.dart';
 
 final _root = GlobalKey<NavigatorState>();
 final _inner = GlobalKey<NavigatorState>();
