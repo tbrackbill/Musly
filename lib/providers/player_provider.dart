@@ -209,6 +209,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver implemen
     _audioHandler.onSeekTo = seek;
     _audioHandler.onTogglePlayPause = togglePlayPause;
     _audioHandler.onSetRemoteVolume = _onRemoteVolumeChange;
+    _audioHandler.onIdleTimeout = _onIdleTimeout;
     _audioHandler.onSetRepeatMode = (mode) {
       switch (mode) {
         case AudioServiceRepeatMode.none:
@@ -227,6 +228,14 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver implemen
       final enabled = mode != AudioServiceShuffleMode.none;
       toggleShuffle(forceValue: enabled);
     };
+  }
+
+  /// Playback has been stopped long enough that the Android wake lock is about
+  /// to be released, after which nothing keeps a DLNA poll alive in the
+  /// background. Drop the renderer instead; the next play is local, from where
+  /// the renderer left off.
+  Future<void> _onIdleTimeout() async {
+    if (_upnpService.isConnected) _upnpService.disconnect();
   }
 
   void _saveQueueState() {
@@ -1578,6 +1587,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver implemen
         return;
       } else {
         _isCrossfadingOut = false;
+        _localSourceStale = false;
 
         final youtubeSource = song.isLocal != true
             ? await _subsonicService.getYoutubeAudioSource(song)
@@ -1808,7 +1818,8 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver implemen
       _updateAndroidAuto();
 
       if (_currentSong != null &&
-          (_audioPlayer.audioSource == null ||
+          (_localSourceStale ||
+              _audioPlayer.audioSource == null ||
               _audioPlayer.processingState == ProcessingState.idle ||
               _audioPlayer.processingState == ProcessingState.completed)) {
         await _prepareCurrentSong();
@@ -2552,15 +2563,19 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver implemen
     if (_currentSong == null) return;
 
     if (_jukeboxService.enabled) return;
+    // Loading a source reports position 0 to the position listener, which
+    // overwrites _position before the seek below could use it.
+    final resumeAt = _position;
     try {
       if (_subsonicService.isYoutube && _currentSong!.isLocal != true) {
         final ytSource =
             await _subsonicService.getYoutubeAudioSource(_currentSong!);
         if (ytSource != null) {
           await _audioPlayer.setAudioSource(ytSource);
-          if (_position.inMilliseconds > 0) {
-            await _audioPlayer.seek(_position);
+          if (resumeAt.inMilliseconds > 0) {
+            await _audioPlayer.seek(resumeAt);
           }
+          _localSourceStale = false;
           return;
         }
       }
@@ -2607,9 +2622,10 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver implemen
         }
       }
 
-      if (_position.inMilliseconds > 0) {
-        await _audioPlayer.seek(_position);
+      if (resumeAt.inMilliseconds > 0) {
+        await _audioPlayer.seek(resumeAt);
       }
+      _localSourceStale = false;
     } catch (e) {
       debugPrint('Error preparing current song after restore: $e');
     }
@@ -3122,6 +3138,15 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver implemen
 
   bool _upnpWasConnected = false;
   bool _upnpWasPlaying = false;
+
+  /// Set while the local player still holds whatever it had before a renderer
+  /// took over; it does not follow the queue while remote. A local play()
+  /// reloads the current song at [_position] instead of resuming that.
+  bool _localSourceStale = false;
+
+  @visibleForTesting
+  bool get localSourceStale => _localSourceStale;
+
   /// Canonical URIs of the track the renderer is playing and the one pre-queued
   /// via SetNextAVTransportURI. Canonical because renderers echo URIs back with
   /// different escaping than we sent â€” see [UpnpService.canonicalUri].
@@ -3167,6 +3192,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver implemen
       _upnpWasConnected = true;
       _upnpWasPlaying = false;
       if (_audioPlayer.playing) _audioPlayer.pause();
+      _localSourceStale = true;
       final vol = _upnpService.volume;
 
       if (vol >= 0) _volume = vol / 100.0;
@@ -3318,6 +3344,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver implemen
       await _audioPlayer.setUrl(playUrl);
       _position = lastPosition;
       await _audioPlayer.seek(lastPosition);
+      _localSourceStale = false;
     } catch (e) {
       debugPrint('UPnP fallback: failed to reload local player: $e');
     } finally {
