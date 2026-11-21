@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -81,12 +82,16 @@ void main() {
 
   int polls() => renderer.actions.where((a) => a == 'GetTransportInfo').length;
 
-  /// Casting song a, paused 42 s in, with the provider caught up on that.
-  Future<void> pausedOnRenderer() async {
-    player.queue.add(song('a'));
-    await player.adoptTrackAt(0);
+  /// Casting song [ids] at [index] (default: just a), paused 42 s in, with the
+  /// provider caught up on that.
+  Future<void> pausedOnRenderer({
+    List<String> ids = const ['a'],
+    int index = 0,
+  }) async {
+    player.queue.addAll(ids.map(song));
+    await player.adoptTrackAt(index);
     expect(await upnp.connect(renderer.device), isTrue);
-    await until(() => renderer.actions.contains('Play'), 'song a cast');
+    await until(() => renderer.actions.contains('Play'), 'song cast');
     await player.pause();
     renderer.position = 42;
     await until(() => player.position == const Duration(seconds: 42),
@@ -174,6 +179,103 @@ void main() {
     handler.onSetRemoteVolume!(40);
     await until(() => renderer.setVolumes.contains(40), 'SetVolume 40');
     expect(renderer.volume, 40);
+  });
+
+  test('a renderer that stops on Play is reloaded, not skipped', () async {
+    // Its stream to the server went stale during the long pause.
+    await pausedOnRenderer(ids: ['a', 'b']);
+    await handler.onIdleTimeout!();
+    renderer.nextPlayState = 'STOPPED';
+    renderer.actions.clear();
+
+    await player.play();
+    await until(() => renderer.actions.contains('Seek'), 'a reload');
+    await Future<void>.delayed(const Duration(milliseconds: 1500));
+
+    expect(player.currentIndex, 0, reason: 'not the end of song a');
+    expect(renderer.trackUri, contains('/tmp/a.mp3'));
+    expect(renderer.lastRequest['Seek'], contains('00:00:42'));
+    expect(player.isPlaying, isTrue);
+  });
+
+  test('a reload keeps the queue position of a song queued twice', () async {
+    await pausedOnRenderer(ids: ['a', 'b', 'a'], index: 1);
+    await player.skipNext();
+    await until(() => player.currentIndex == 2, 'on the second copy of a');
+    await player.pause();
+    await handler.onIdleTimeout!();
+    renderer.transportState = 'STOPPED';
+
+    await player.play();
+    await until(() => renderer.actions.contains('Seek'), 'a reload');
+
+    expect(player.currentIndex, 2);
+  });
+
+  test('a renderer now playing something else gets our song back', () async {
+    await pausedOnRenderer();
+    await handler.onIdleTimeout!();
+    renderer.trackUri = 'http://elsewhere/other.mp3';
+    renderer.transportState = 'PAUSED_PLAYBACK';
+    renderer.actions.clear();
+
+    await player.play();
+    await until(() => renderer.actions.contains('Seek'), 'a reload');
+
+    expect(renderer.trackUri, contains('/tmp/a.mp3'));
+    expect(renderer.lastRequest['Seek'], contains('00:00:42'));
+  });
+
+  test('a renderer that answers on a later try is resumed', () async {
+    await pausedOnRenderer();
+    await handler.onIdleTimeout!();
+    renderer.refuseNext = 3; // Waking up: the first tries fail.
+    renderer.actions.clear();
+
+    await player.play();
+
+    expect(upnp.isConnected, isTrue);
+    expect(player.isPlaying, isTrue);
+    expect(renderer.transportState, 'PLAYING');
+    expect(renderer.actions, isNot(contains('SetAVTransportURI')));
+  });
+
+  test('a volume change during the check does not cancel the play', () async {
+    await pausedOnRenderer();
+    await handler.onIdleTimeout!();
+    renderer.gateTransportInfo = Completer<void>();
+    renderer.actions.clear();
+
+    final playing = player.play();
+    await until(() => renderer.actions.contains('GetTransportInfo'),
+        'the check has started');
+    // A hardware key: the session is active again, so Android sends it here.
+    await upnp.setVolume(40);
+    renderer.gateTransportInfo!.complete();
+    await playing;
+
+    expect(player.isPlaying, isTrue);
+    expect(renderer.actions, contains('Play'));
+    expect(renderer.transportState, 'PLAYING');
+  });
+
+  test('a pause during the check sends no Play', () async {
+    await pausedOnRenderer();
+    await handler.onIdleTimeout!();
+    renderer.gateTransportInfo = Completer<void>();
+    renderer.actions.clear();
+
+    final playing = player.play();
+    await until(() => renderer.actions.contains('GetTransportInfo'),
+        'the check has started');
+    await player.pause();
+    renderer.gateTransportInfo!.complete();
+    await playing;
+    await pumpEventQueue();
+
+    expect(player.isPlaying, isFalse);
+    expect(renderer.actions, isNot(contains('Play')));
+    expect(renderer.transportState, 'PAUSED_PLAYBACK');
   });
 
   test('the idle timeout leaves local playback alone', () async {

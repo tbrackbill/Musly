@@ -440,7 +440,8 @@ class UpnpService extends ChangeNotifier {
   bool get pollingSuspended => _pollingSuspended;
 
   /// Stops the poll but stays connected, for a long pause where nothing
-  /// should keep the device awake. [play] and [loadAndPlay] restart it.
+  /// should keep the device awake. [play], [loadAndPlay] and [resumePolling]
+  /// restart it.
   void suspendPolling() {
     if (_connectedDevice == null || _pollingSuspended) return;
     debugPrint('UPnP: suspending the poll while idle');
@@ -448,9 +449,11 @@ class UpnpService extends ChangeNotifier {
     _pollingSuspended = true;
   }
 
-  void _resumePolling() {
+  void resumePolling() {
     if (!_pollingSuspended || _connectedDevice == null) return;
     debugPrint('UPnP: resuming the poll');
+    // Failures from before the pause say nothing about the renderer now.
+    _consecutivePollErrors = 0;
     _startPolling();
   }
 
@@ -649,7 +652,7 @@ class UpnpService extends ChangeNotifier {
       debugPrint('UPnP: loadAndPlay called but no device connected');
       return false;
     }
-    _resumePolling();
+    resumePolling();
 
     debugPrint('UPnP: loadAndPlay → ${device.friendlyName}');
     debugPrint('UPnP:   URL: $url');
@@ -790,10 +793,12 @@ class UpnpService extends ChangeNotifier {
     }
   }
 
-  Future<void> play() async {
+  /// [resumePolling] false leaves a suspended poll off, for a caller that
+  /// wants to see the renderer start before the poll reads it.
+  Future<void> play({bool resumePolling = true}) async {
     final device = _connectedDevice;
     if (device == null) return;
-    _resumePolling();
+    if (resumePolling) this.resumePolling();
     try {
       _rendererState = 'PLAYING';
       _safeNotifyListeners();

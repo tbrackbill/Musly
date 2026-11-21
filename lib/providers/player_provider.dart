@@ -281,21 +281,36 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver implemen
     if (_upnpService.isConnected) _upnpService.suspendPolling();
   }
 
-  /// How many times, a second apart, an idle renderer is asked for its state
-  /// before it is given up for gone. Wi-Fi can take a moment to come back
-  /// after the device has been asleep.
-  static const _idleRendererAttempts = 3;
+  /// How long an idle renderer is retried before it is given up for gone.
+  /// Wi-Fi can take a moment to come back after the device has been asleep,
+  /// and an unreachable address often fails at once, so this is a time budget
+  /// rather than a number of attempts.
+  static const _idleRendererPatience = Duration(seconds: 8);
+
+  /// How long, after Play, to wait for an idle renderer to report PLAYING.
+  static const _idleResumeConfirm = Duration(seconds: 5);
+
+  Future<void>? _idleResume;
 
   /// Nothing has watched the renderer since [_onIdleTimeout]. It may have
   /// dropped the track (standby, another controller) or gone away, so look
-  /// before sending Play.
-  Future<void> _resumeIdleRenderer() async {
+  /// before sending Play. A second play while one check runs joins it.
+  Future<void> _resumeIdleRenderer() => _idleResume ??=
+      _checkIdleRenderer().whenComplete(() => _idleResume = null);
+
+  /// Paused, switched renderer, or disconnected while we were asking.
+  bool get _idleResumeAbandoned =>
+      !_isPlaying || !_upnpService.pollingSuspended;
+
+  Future<void> _checkIdleRenderer() async {
+    final sw = Stopwatch()..start();
     UpnpPlaybackState? state;
-    for (var i = 0; i < _idleRendererAttempts && state == null; i++) {
-      if (i > 0) await Future<void>.delayed(const Duration(seconds: 1));
+    while (true) {
       state = await _upnpService.getPlaybackState();
-      // Paused, switched renderer, or disconnected while we were asking.
-      if (!_isPlaying || !_upnpService.pollingSuspended) return;
+      if (_idleResumeAbandoned) return;
+      if (state != null || sw.elapsed >= _idleRendererPatience) break;
+      await Future<void>.delayed(const Duration(seconds: 1));
+      if (_idleResumeAbandoned) return;
     }
 
     if (state == null) {
@@ -307,17 +322,13 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver implemen
       return;
     }
 
-    final uri = state.trackUri;
-    final onOurTrack = uri == null ||
-        uri.isEmpty ||
-        _currentUpnpTrackUrl == null ||
-        UpnpService.canonicalUri(uri) == _currentUpnpTrackUrl;
-    final hasTrack = state.transportState != 'STOPPED' &&
-        state.transportState != 'NO_MEDIA_PRESENT';
     final song = _currentSong;
-    if ((onOurTrack && hasTrack) || song == null) {
-      await _upnpService.play();
-      return;
+    if (_rendererHasOurTrack(state) || song == null) {
+      // The poll stays off until the renderer confirms: a renderer that lost
+      // its stream during the pause goes to STOPPED on Play, and the poll would
+      // take that for the end of the track and skip to the next song.
+      await _upnpService.play(resumePolling: false);
+      if (await _idleRendererStartedPlaying() || song == null) return;
     }
 
     final resumeAt = _position;
@@ -326,7 +337,40 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver implemen
         '${resumeAt.inSeconds}s');
     // As on connect: playSong treats the current song as a resume, not a load.
     _currentSong = null;
-    await playSong(song, initialPosition: resumeAt);
+    await playSong(song, startIndex: _currentIndex, initialPosition: resumeAt);
+  }
+
+  /// Still on the track we left it on, or on the one pre-queued after it,
+  /// which the poll follows once it resumes.
+  bool _rendererHasOurTrack(UpnpPlaybackState state) {
+    if (state.transportState == 'STOPPED' ||
+        state.transportState == 'NO_MEDIA_PRESENT') {
+      return false;
+    }
+    final uri = state.trackUri;
+    if (uri == null || uri.isEmpty || _currentUpnpTrackUrl == null) return true;
+    final canonical = UpnpService.canonicalUri(uri);
+    return canonical == _currentUpnpTrackUrl || canonical == _nextUpnpTrackUrl;
+  }
+
+  /// After Play to an idle renderer, waits for it to report PLAYING and then
+  /// resumes the poll. False if it stopped instead, so the song is reloaded.
+  Future<bool> _idleRendererStartedPlaying() async {
+    final sw = Stopwatch()..start();
+    while (sw.elapsed < _idleResumeConfirm) {
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      if (_idleResumeAbandoned) return true;
+      final state = await _upnpService.getPlaybackState();
+      if (_idleResumeAbandoned) return true;
+      if (state == null || state.transportState == 'TRANSITIONING') continue;
+      if (state.transportState == 'PLAYING') break;
+      if (state.transportState == 'STOPPED' ||
+          state.transportState == 'NO_MEDIA_PRESENT') {
+        return false;
+      }
+    }
+    _upnpService.resumePolling();
+    return true;
   }
 
   void _saveQueueState() {
@@ -3405,6 +3449,15 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver implemen
 
     if (!connected) return;
 
+    // With the poll suspended, the transport state held by UpnpService is from
+    // before the pause, or the optimistic value from a Play; neither is a
+    // reading. Taking it as one stopped an idle resume half way. Only the
+    // volume (from SetVolume replies) is current.
+    if (_upnpService.pollingSuspended) {
+      if (_syncRendererVolume()) notifyListeners();
+      return;
+    }
+
     final pos = _upnpService.rendererPosition;
     final dur = _upnpService.rendererDuration;
     final playing = _upnpService.isRendererPlaying;
@@ -3486,22 +3539,26 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver implemen
       changed = true;
     }
 
-    final vol = _upnpService.volume;
-    if (vol >= 0 && !_upnpVolumeWriter.busy) {
-      final normalized = vol / 100.0;
-      if ((_volume - normalized).abs() > 0.005) {
-        debugPrint('UPnP: player volume synced to renderer volume $vol');
-        _volume = normalized;
-        changed = true;
-        _audioHandler.updateRemoteVolume(vol);
-      }
-    }
+    if (_syncRendererVolume()) changed = true;
 
     if (changed) {
       _positionController.add(_position);
       notifyListeners();
       _updateAndroidAuto();
     }
+  }
+
+  /// Takes up the renderer's volume unless a write of ours is in flight.
+  /// True if it changed.
+  bool _syncRendererVolume() {
+    final vol = _upnpService.volume;
+    if (vol < 0 || _upnpVolumeWriter.busy) return false;
+    final normalized = vol / 100.0;
+    if ((_volume - normalized).abs() <= 0.005) return false;
+    debugPrint('UPnP: player volume synced to renderer volume $vol');
+    _volume = normalized;
+    _audioHandler.updateRemoteVolume(vol);
+    return true;
   }
 
   Future<void> _onUpnpRendererLost() async {

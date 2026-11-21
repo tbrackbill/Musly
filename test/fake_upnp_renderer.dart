@@ -47,6 +47,18 @@ class FakeUpnpRenderer {
   /// The request body of the last action of each name.
   final lastRequest = <String, String>{};
 
+  /// When set, the next Play leaves the renderer in this state instead of
+  /// PLAYING, once: a renderer whose stream went stale during a long pause
+  /// goes to STOPPED.
+  String? nextPlayState;
+
+  /// When set, GetTransportInfo requests wait for this before answering.
+  Completer<void>? gateTransportInfo;
+
+  /// How many of the next requests to answer with a SOAP fault (HTTP 500),
+  /// as a renderer does while it is still waking up.
+  int refuseNext = 0;
+
   /// Seconds into the track. Advances on each position read while playing.
   int position = 0;
 
@@ -73,6 +85,7 @@ class FakeUpnpRenderer {
     if (_closed) return;
     _closed = true;
     if (!releaseRead.isCompleted) releaseRead.complete();
+    if (gateTransportInfo?.isCompleted == false) gateTransportInfo!.complete();
     if (gateSetVolume?.isCompleted == false) gateSetVolume!.complete();
     await _server.close(force: true);
   }
@@ -85,10 +98,17 @@ class FakeUpnpRenderer {
     final request = await utf8.decodeStream(req);
     actions.add(action);
     lastRequest[action] = request;
+    if (refuseNext > 0) {
+      refuseNext--;
+      req.response.statusCode = HttpStatus.internalServerError;
+      await req.response.close();
+      return;
+    }
 
     var body = '';
     switch (action) {
       case 'GetTransportInfo':
+        await gateTransportInfo?.future;
         body = '<CurrentTransportState>$transportState</CurrentTransportState>';
       case 'GetPositionInfo':
         // Advancing position makes every poll notify, as it does while a real
@@ -103,7 +123,8 @@ class FakeUpnpRenderer {
             RegExp(r'<CurrentURI>([^<]*)<').firstMatch(request)?.group(1);
         transportState = 'STOPPED';
       case 'Play':
-        transportState = 'PLAYING';
+        transportState = nextPlayState ?? 'PLAYING';
+        nextPlayState = null;
       case 'Pause':
         transportState = 'PAUSED_PLAYBACK';
       case 'Stop':
