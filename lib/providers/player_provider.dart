@@ -274,10 +274,59 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver implemen
 
   /// Playback has been stopped long enough that the Android wake lock is about
   /// to be released, after which nothing keeps a DLNA poll alive in the
-  /// background. Drop the renderer instead; the next play is local, from where
-  /// the renderer left off.
+  /// background. Stop polling but stay on the renderer: the media session
+  /// stays remote, so the system volume slider still drives the speaker and
+  /// the next play resumes there, through [_resumeIdleRenderer].
   Future<void> _onIdleTimeout() async {
-    if (_upnpService.isConnected) _upnpService.disconnect();
+    if (_upnpService.isConnected) _upnpService.suspendPolling();
+  }
+
+  /// How many times, a second apart, an idle renderer is asked for its state
+  /// before it is given up for gone. Wi-Fi can take a moment to come back
+  /// after the device has been asleep.
+  static const _idleRendererAttempts = 3;
+
+  /// Nothing has watched the renderer since [_onIdleTimeout]. It may have
+  /// dropped the track (standby, another controller) or gone away, so look
+  /// before sending Play.
+  Future<void> _resumeIdleRenderer() async {
+    UpnpPlaybackState? state;
+    for (var i = 0; i < _idleRendererAttempts && state == null; i++) {
+      if (i > 0) await Future<void>.delayed(const Duration(seconds: 1));
+      state = await _upnpService.getPlaybackState();
+      // Paused, switched renderer, or disconnected while we were asking.
+      if (!_isPlaying || !_upnpService.pollingSuspended) return;
+    }
+
+    if (state == null) {
+      // Staying paused beats a press meant for the speaker starting the phone.
+      debugPrint('UPnP: renderer unreachable after the idle timeout '
+          '— staying paused');
+      _upnpService.disconnect();
+      await _onUpnpRendererLost();
+      return;
+    }
+
+    final uri = state.trackUri;
+    final onOurTrack = uri == null ||
+        uri.isEmpty ||
+        _currentUpnpTrackUrl == null ||
+        UpnpService.canonicalUri(uri) == _currentUpnpTrackUrl;
+    final hasTrack = state.transportState != 'STOPPED' &&
+        state.transportState != 'NO_MEDIA_PRESENT';
+    final song = _currentSong;
+    if ((onOurTrack && hasTrack) || song == null) {
+      await _upnpService.play();
+      return;
+    }
+
+    final resumeAt = _position;
+    debugPrint('UPnP: renderer dropped our track while idle '
+        '(state=${state.transportState}) — reloading at '
+        '${resumeAt.inSeconds}s');
+    // As on connect: playSong treats the current song as a resume, not a load.
+    _currentSong = null;
+    await playSong(song, initialPosition: resumeAt);
   }
 
   void _saveQueueState() {
@@ -1884,7 +1933,11 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver implemen
       _isPlaying = true;
       notifyListeners();
       _updateAndroidAuto();
-      await _upnpService.play();
+      if (_upnpService.pollingSuspended) {
+        await _resumeIdleRenderer();
+      } else {
+        await _upnpService.play();
+      }
       return;
     } else {
       _isPlaying = true;
