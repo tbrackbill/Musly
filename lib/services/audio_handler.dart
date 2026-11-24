@@ -15,6 +15,17 @@ class MuslyAudioHandler extends BaseAudioHandler with SeekHandler {
     handleInterruptions: false,
   );
   static const _pitchChannel = MethodChannel('com.devid.musly/pitch');
+  static const _serviceChannel = MethodChannel('com.devid.musly/audio_service');
+
+  /// How long playback may stay stopped before the wake lock is let go.
+  ///
+  /// audio_service takes a partial wake lock on every play and, with
+  /// androidStopForegroundOnPause off, keeps it through every pause. On a
+  /// device where Musly's battery use is unrestricted, Android honours that
+  /// lock indefinitely, so a paused Musly kept the CPU from ever sleeping.
+  /// The foreground service is left alone: it is what lets playback restart
+  /// from the background, and Android already manages it during long pauses.
+  static const idleRelease = Duration(minutes: 5);
 
   static const mediaIdRecent = 'AUTO_RECENT';
   static const mediaIdAlbums = 'AUTO_ALBUMS';
@@ -40,6 +51,10 @@ class MuslyAudioHandler extends BaseAudioHandler with SeekHandler {
   void Function(int volumePercent)? onSetRemoteVolume;
   void Function(AudioServiceRepeatMode repeatMode)? onSetRepeatMode;
   void Function(AudioServiceShuffleMode shuffleMode)? onSetShuffleMode;
+
+  /// Runs once playback has been stopped for [idleRelease], just before the
+  /// wake lock is released.
+  Future<void> Function()? onIdleTimeout;
 
   @override
   Future<void> setRepeatMode(AudioServiceRepeatMode repeatMode) async {
@@ -134,7 +149,20 @@ class MuslyAudioHandler extends BaseAudioHandler with SeekHandler {
 
   StreamSubscription<PlaybackEvent>? _localStateSub;
 
-  MuslyAudioHandler() {
+  final Future<void> Function() _releaseWakeLock;
+  StreamSubscription<PlaybackState>? _idleSub;
+  Timer? _idleTimer;
+
+  /// Whether the native service holds its wake lock: from a playing state
+  /// until [_releaseWhenIdle] lets go of it.
+  bool _wakeLockHeld = false;
+
+  /// [releaseWhenIdle] is for the Android service only; elsewhere there is no
+  /// wake lock and nothing to release.
+  MuslyAudioHandler({
+    bool releaseWhenIdle = false,
+    @visibleForTesting Future<void> Function()? releaseWakeLock,
+  }) : _releaseWakeLock = releaseWakeLock ?? _releaseNativeWakeLock {
     _localStateSub = _player.playbackEventStream.listen((event) {
       if (_remotePlayback) return;
       playbackState.add(_buildPlaybackState(event));
@@ -143,6 +171,45 @@ class MuslyAudioHandler extends BaseAudioHandler with SeekHandler {
     if (!kIsWeb && Platform.isAndroid) {
       androidPlaybackInfo.add(LocalAndroidPlaybackInfo());
     }
+
+    if (releaseWhenIdle) _idleSub = playbackState.listen(_trackIdle);
+  }
+
+  void _trackIdle(PlaybackState state) {
+    if (state.playing) {
+      _wakeLockHeld = true;
+      _idleTimer?.cancel();
+      _idleTimer = null;
+    } else if (_wakeLockHeld) {
+      _idleTimer ??= Timer(idleRelease, _releaseWhenIdle);
+    }
+  }
+
+  Future<void> _releaseWhenIdle() async {
+    _idleTimer = null;
+    try {
+      await onIdleTimeout?.call();
+    } catch (e) {
+      debugPrint('[AudioHandler] idle timeout callback failed: $e');
+    }
+    // Playback may have restarted while the callback ran.
+    if (playbackState.value.playing) return;
+    try {
+      await _releaseWakeLock();
+      // A play during the call has taken the lock again.
+      if (!playbackState.value.playing) _wakeLockHeld = false;
+    } catch (e) {
+      // The native side attaches the channel once the main thread is idle, so
+      // a very early call can miss it. Try again later.
+      debugPrint('[AudioHandler] could not release the wake lock: $e');
+      if (!playbackState.value.playing) {
+        _idleTimer ??= Timer(idleRelease, _releaseWhenIdle);
+      }
+    }
+  }
+
+  static Future<void> _releaseNativeWakeLock() async {
+    await _serviceChannel.invokeMethod<bool>('releaseWakeLock');
   }
 
   void setAutoService(AndroidAutoService service) {
@@ -414,6 +481,18 @@ class MuslyAudioHandler extends BaseAudioHandler with SeekHandler {
     );
   }
 
+  /// Whether the media session should say the local player is playing.
+  ///
+  /// just_audio keeps `playing` true after the last track completes, and sets
+  /// it when play() is called with nothing loaded. Nothing is audible in
+  /// either case, and reporting it as playing kept audio_service's wake lock,
+  /// and Android's media session, in the playing state indefinitely.
+  @visibleForTesting
+  static bool reportsPlaying(bool playing, ProcessingState state) =>
+      playing &&
+      state != ProcessingState.completed &&
+      state != ProcessingState.idle;
+
   PlaybackState _buildPlaybackState(PlaybackEvent event) {
     final processingStateMap = {
       ProcessingState.idle: AudioProcessingState.idle,
@@ -423,10 +502,12 @@ class MuslyAudioHandler extends BaseAudioHandler with SeekHandler {
       ProcessingState.completed: AudioProcessingState.completed,
     };
 
+    final playing = reportsPlaying(_player.playing, _player.processingState);
+
     return PlaybackState(
       controls: [
         MediaControl.skipToPrevious,
-        if (_player.playing) MediaControl.pause else MediaControl.play,
+        if (playing) MediaControl.pause else MediaControl.play,
         MediaControl.skipToNext,
       ],
       systemActions: const {
@@ -441,7 +522,7 @@ class MuslyAudioHandler extends BaseAudioHandler with SeekHandler {
       androidCompactActionIndices: const [0, 1, 2],
       processingState:
           processingStateMap[_player.processingState] ?? AudioProcessingState.idle,
-      playing: _player.playing,
+      playing: playing,
       updatePosition: _player.position,
       bufferedPosition: _player.bufferedPosition,
       speed: _player.speed,
@@ -475,6 +556,8 @@ class MuslyAudioHandler extends BaseAudioHandler with SeekHandler {
   Future<void> customAction(String name, [Map<String, dynamic>? extras]) async {
     if (name == 'dispose') {
       await cancelLocalStateMirror();
+      _idleTimer?.cancel();
+      await _idleSub?.cancel();
       for (final sub in _childrenSubjects.values) {
         await sub.close();
       }
@@ -487,7 +570,7 @@ class MuslyAudioHandler extends BaseAudioHandler with SeekHandler {
 Future<MuslyAudioHandler> initAudioService() async {
   if (!kIsWeb && (Platform.isIOS || Platform.isAndroid || Platform.isMacOS)) {
     return AudioService.init(
-      builder: () => MuslyAudioHandler(),
+      builder: () => MuslyAudioHandler(releaseWhenIdle: Platform.isAndroid),
       config: const AudioServiceConfig(
         androidNotificationChannelId: 'com.devid.musly.channel.audio',
         androidNotificationChannelName: 'Musly',

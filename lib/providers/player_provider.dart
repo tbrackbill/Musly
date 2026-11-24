@@ -251,6 +251,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver implemen
     };
     _audioHandler.onTogglePlayPause = _afterStartup(togglePlayPause);
     _audioHandler.onSetRemoteVolume = _onRemoteVolumeChange;
+    _audioHandler.onIdleTimeout = _onIdleTimeout;
     _audioHandler.onSetRepeatMode = (mode) {
       switch (mode) {
         case AudioServiceRepeatMode.none:
@@ -269,6 +270,107 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver implemen
       final enabled = mode != AudioServiceShuffleMode.none;
       toggleShuffle(forceValue: enabled);
     };
+  }
+
+  /// Playback has been stopped long enough that the Android wake lock is about
+  /// to be released, after which nothing keeps a DLNA poll alive in the
+  /// background. Stop polling but stay on the renderer: the media session
+  /// stays remote, so the system volume slider still drives the speaker and
+  /// the next play resumes there, through [_resumeIdleRenderer].
+  Future<void> _onIdleTimeout() async {
+    if (_upnpService.isConnected) _upnpService.suspendPolling();
+  }
+
+  /// How long an idle renderer is retried before it is given up for gone.
+  /// Wi-Fi can take a moment to come back after the device has been asleep,
+  /// and an unreachable address often fails at once, so this is a time budget
+  /// rather than a number of attempts.
+  static const _idleRendererPatience = Duration(seconds: 8);
+
+  /// How long, after Play, to wait for an idle renderer to report PLAYING.
+  static const _idleResumeConfirm = Duration(seconds: 5);
+
+  Future<void>? _idleResume;
+
+  /// Nothing has watched the renderer since [_onIdleTimeout]. It may have
+  /// dropped the track (standby, another controller) or gone away, so look
+  /// before sending Play. A second play while one check runs joins it.
+  Future<void> _resumeIdleRenderer() => _idleResume ??=
+      _checkIdleRenderer().whenComplete(() => _idleResume = null);
+
+  /// Paused, switched renderer, or disconnected while we were asking.
+  bool get _idleResumeAbandoned =>
+      !_isPlaying || !_upnpService.pollingSuspended;
+
+  Future<void> _checkIdleRenderer() async {
+    final sw = Stopwatch()..start();
+    UpnpPlaybackState? state;
+    while (true) {
+      state = await _upnpService.getPlaybackState();
+      if (_idleResumeAbandoned) return;
+      if (state != null || sw.elapsed >= _idleRendererPatience) break;
+      await Future<void>.delayed(const Duration(seconds: 1));
+      if (_idleResumeAbandoned) return;
+    }
+
+    if (state == null) {
+      // Staying paused beats a press meant for the speaker starting the phone.
+      debugPrint('UPnP: renderer unreachable after the idle timeout '
+          '— staying paused');
+      _upnpService.disconnect();
+      await _onUpnpRendererLost();
+      return;
+    }
+
+    final song = _currentSong;
+    if (_rendererHasOurTrack(state) || song == null) {
+      // The poll stays off until the renderer confirms: a renderer that lost
+      // its stream during the pause goes to STOPPED on Play, and the poll would
+      // take that for the end of the track and skip to the next song.
+      await _upnpService.play(resumePolling: false);
+      if (await _idleRendererStartedPlaying() || song == null) return;
+    }
+
+    final resumeAt = _position;
+    debugPrint('UPnP: renderer dropped our track while idle '
+        '(state=${state.transportState}) — reloading at '
+        '${resumeAt.inSeconds}s');
+    // As on connect: playSong treats the current song as a resume, not a load.
+    _currentSong = null;
+    await playSong(song, startIndex: _currentIndex, initialPosition: resumeAt);
+  }
+
+  /// Still on the track we left it on, or on the one pre-queued after it,
+  /// which the poll follows once it resumes.
+  bool _rendererHasOurTrack(UpnpPlaybackState state) {
+    if (state.transportState == 'STOPPED' ||
+        state.transportState == 'NO_MEDIA_PRESENT') {
+      return false;
+    }
+    final uri = state.trackUri;
+    if (uri == null || uri.isEmpty || _currentUpnpTrackUrl == null) return true;
+    final canonical = UpnpService.canonicalUri(uri);
+    return canonical == _currentUpnpTrackUrl || canonical == _nextUpnpTrackUrl;
+  }
+
+  /// After Play to an idle renderer, waits for it to report PLAYING and then
+  /// resumes the poll. False if it stopped instead, so the song is reloaded.
+  Future<bool> _idleRendererStartedPlaying() async {
+    final sw = Stopwatch()..start();
+    while (sw.elapsed < _idleResumeConfirm) {
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      if (_idleResumeAbandoned) return true;
+      final state = await _upnpService.getPlaybackState();
+      if (_idleResumeAbandoned) return true;
+      if (state == null || state.transportState == 'TRANSITIONING') continue;
+      if (state.transportState == 'PLAYING') break;
+      if (state.transportState == 'STOPPED' ||
+          state.transportState == 'NO_MEDIA_PRESENT') {
+        return false;
+      }
+    }
+    _upnpService.resumePolling();
+    return true;
   }
 
   void _saveQueueState() {
@@ -1644,6 +1746,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver implemen
         return;
       } else {
         _isCrossfadingOut = false;
+        _localSourceStale = false;
 
         final youtubeSource = song.isLocal != true
             ? await _subsonicService.getYoutubeAudioSource(song)
@@ -1874,7 +1977,11 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver implemen
       _isPlaying = true;
       notifyListeners();
       _updateAndroidAuto();
-      await _upnpService.play();
+      if (_upnpService.pollingSuspended) {
+        await _resumeIdleRenderer();
+      } else {
+        await _upnpService.play();
+      }
       return;
     } else {
       _isPlaying = true;
@@ -1882,7 +1989,8 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver implemen
       _updateAndroidAuto();
 
       if (_currentSong != null &&
-          (_audioPlayer.audioSource == null ||
+          (_localSourceStale ||
+              _audioPlayer.audioSource == null ||
               _audioPlayer.processingState == ProcessingState.idle ||
               _audioPlayer.processingState == ProcessingState.completed)) {
         await _prepareCurrentSong();
@@ -2681,15 +2789,19 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver implemen
     if (_currentSong == null) return;
 
     if (_jukeboxService.enabled) return;
+    // Loading a source reports position 0 to the position listener, which
+    // overwrites _position before the seek below could use it.
+    final resumeAt = _position;
     try {
       if (_subsonicService.isYoutube && _currentSong!.isLocal != true) {
         final ytSource =
             await _subsonicService.getYoutubeAudioSource(_currentSong!);
         if (ytSource != null) {
           await _audioPlayer.setAudioSource(ytSource);
-          if (_position.inMilliseconds > 0) {
-            await _audioPlayer.seek(_position);
+          if (resumeAt.inMilliseconds > 0) {
+            await _audioPlayer.seek(resumeAt);
           }
+          _localSourceStale = false;
           return;
         }
       }
@@ -2736,9 +2848,10 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver implemen
         }
       }
 
-      if (_position.inMilliseconds > 0) {
-        await _audioPlayer.seek(_position);
+      if (resumeAt.inMilliseconds > 0) {
+        await _audioPlayer.seek(resumeAt);
       }
+      _localSourceStale = false;
     } catch (e) {
       debugPrint('Error preparing current song after restore: $e');
     }
@@ -3251,6 +3364,15 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver implemen
 
   bool _upnpWasConnected = false;
   bool _upnpWasPlaying = false;
+
+  /// Set while the local player still holds whatever it had before a renderer
+  /// took over; it does not follow the queue while remote. A local play()
+  /// reloads the current song at [_position] instead of resuming that.
+  bool _localSourceStale = false;
+
+  @visibleForTesting
+  bool get localSourceStale => _localSourceStale;
+
   /// Canonical URIs of the track the renderer is playing and the one pre-queued
   /// via SetNextAVTransportURI. Canonical because renderers echo URIs back with
   /// different escaping than we sent â€” see [UpnpService.canonicalUri].
@@ -3296,6 +3418,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver implemen
       _upnpWasConnected = true;
       _upnpWasPlaying = false;
       if (_audioPlayer.playing) _audioPlayer.pause();
+      _localSourceStale = true;
       final vol = _upnpService.volume;
 
       if (vol >= 0) _volume = vol / 100.0;
@@ -3325,6 +3448,15 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver implemen
     }
 
     if (!connected) return;
+
+    // With the poll suspended, the transport state held by UpnpService is from
+    // before the pause, or the optimistic value from a Play; neither is a
+    // reading. Taking it as one stopped an idle resume half way. Only the
+    // volume (from SetVolume replies) is current.
+    if (_upnpService.pollingSuspended) {
+      if (_syncRendererVolume()) notifyListeners();
+      return;
+    }
 
     final pos = _upnpService.rendererPosition;
     final dur = _upnpService.rendererDuration;
@@ -3407,22 +3539,26 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver implemen
       changed = true;
     }
 
-    final vol = _upnpService.volume;
-    if (vol >= 0 && !_upnpVolumeWriter.busy) {
-      final normalized = vol / 100.0;
-      if ((_volume - normalized).abs() > 0.005) {
-        debugPrint('UPnP: player volume synced to renderer volume $vol');
-        _volume = normalized;
-        changed = true;
-        _audioHandler.updateRemoteVolume(vol);
-      }
-    }
+    if (_syncRendererVolume()) changed = true;
 
     if (changed) {
       _positionController.add(_position);
       notifyListeners();
       _updateAndroidAuto();
     }
+  }
+
+  /// Takes up the renderer's volume unless a write of ours is in flight.
+  /// True if it changed.
+  bool _syncRendererVolume() {
+    final vol = _upnpService.volume;
+    if (vol < 0 || _upnpVolumeWriter.busy) return false;
+    final normalized = vol / 100.0;
+    if ((_volume - normalized).abs() <= 0.005) return false;
+    debugPrint('UPnP: player volume synced to renderer volume $vol');
+    _volume = normalized;
+    _audioHandler.updateRemoteVolume(vol);
+    return true;
   }
 
   Future<void> _onUpnpRendererLost() async {
@@ -3447,6 +3583,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver implemen
       await _audioPlayer.setUrl(playUrl);
       _position = lastPosition;
       await _audioPlayer.seek(lastPosition);
+      _localSourceStale = false;
     } catch (e) {
       debugPrint('UPnP fallback: failed to reload local player: $e');
     } finally {

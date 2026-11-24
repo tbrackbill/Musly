@@ -415,6 +415,7 @@ class UpnpService extends ChangeNotifier {
     _currentTrackUri = null;
     _volume = -1;
     _consecutivePollErrors = 0;
+    _pollingSuspended = false;
     _safeNotifyListeners();
 
     if (device != null) {
@@ -428,7 +429,32 @@ class UpnpService extends ChangeNotifier {
 
   void _startPolling() {
     _stopPolling();
+    _pollingSuspended = false;
     _pollTimer = Timer.periodic(const Duration(seconds: 1), (_) => _poll());
+  }
+
+  bool _pollingSuspended = false;
+
+  /// Whether [suspendPolling] stopped the poll and nothing has restarted it.
+  /// While true, the renderer state held here may be out of date.
+  bool get pollingSuspended => _pollingSuspended;
+
+  /// Stops the poll but stays connected, for a long pause where nothing
+  /// should keep the device awake. [play], [loadAndPlay] and [resumePolling]
+  /// restart it.
+  void suspendPolling() {
+    if (_connectedDevice == null || _pollingSuspended) return;
+    debugPrint('UPnP: suspending the poll while idle');
+    _stopPolling();
+    _pollingSuspended = true;
+  }
+
+  void resumePolling() {
+    if (!_pollingSuspended || _connectedDevice == null) return;
+    debugPrint('UPnP: resuming the poll');
+    // Failures from before the pause say nothing about the renderer now.
+    _consecutivePollErrors = 0;
+    _startPolling();
   }
 
   void _stopPolling() {
@@ -626,6 +652,7 @@ class UpnpService extends ChangeNotifier {
       debugPrint('UPnP: loadAndPlay called but no device connected');
       return false;
     }
+    resumePolling();
 
     debugPrint('UPnP: loadAndPlay → ${device.friendlyName}');
     debugPrint('UPnP:   URL: $url');
@@ -766,9 +793,12 @@ class UpnpService extends ChangeNotifier {
     }
   }
 
-  Future<void> play() async {
+  /// [resumePolling] false leaves a suspended poll off, for a caller that
+  /// wants to see the renderer start before the poll reads it.
+  Future<void> play({bool resumePolling = true}) async {
     final device = _connectedDevice;
     if (device == null) return;
+    if (resumePolling) this.resumePolling();
     try {
       _rendererState = 'PLAYING';
       _safeNotifyListeners();
