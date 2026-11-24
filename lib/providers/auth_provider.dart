@@ -105,13 +105,20 @@ class AuthProvider extends ChangeNotifier {
     const maxAttempts = 3;
     for (int attempt = 1; attempt <= maxAttempts; attempt++) {
       if (_config != targetConfig) return;
+      var timedOut = false;
       pingResult = await _subsonicService.pingWithError().timeout(
-            const Duration(seconds: 10),
-            onTimeout: () =>
-                PingResult(success: false, error: 'Connection timed out'),
-          );
+        const Duration(seconds: 7),
+        onTimeout: () {
+          timedOut = true;
+          return PingResult(success: false, error: 'Connection timed out');
+        },
+      );
       if (_config != targetConfig) return;
-      if (pingResult.success) break;
+      // Retry only a ping that failed (e.g. the network was still coming
+      // up), not one that timed out: that one would most likely hang again,
+      // only delaying the offer of offline mode. 7 s still covers Android's
+      // DNS resolver resending a lost query after 5 s.
+      if (pingResult.success || timedOut) break;
       if (attempt < maxAttempts) {
         await Future.delayed(const Duration(seconds: 2));
       }
